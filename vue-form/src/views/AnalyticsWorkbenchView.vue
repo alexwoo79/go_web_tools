@@ -1,0 +1,233 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import DatasetUpload from '@/components/analytics/DatasetUpload.vue'
+import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
+import FieldMapper from '@/components/analytics/FieldMapper.vue'
+import ChartCanvas from '@/components/analytics/ChartCanvas.vue'
+import type { UploadedDataset } from '@/components/analytics/DatasetUpload.vue'
+
+interface FieldDef {
+  key: string
+  label: string
+  description?: string
+  required?: boolean
+}
+
+interface ChartDefinition {
+  kind: string
+  label: string
+  family: string
+  description?: string
+  hint?: string
+  fields: FieldDef[]
+}
+
+const router = useRouter()
+
+const definitions = ref<ChartDefinition[]>([])
+const loadingDefs = ref(true)
+const defsError = ref('')
+
+const dataset = ref<UploadedDataset | null>(null)
+const chartKind = ref('')
+const chartTitle = ref('')
+const fieldConfig = ref<Record<string, string>>({})
+
+const building = ref(false)
+const buildError = ref('')
+const chartOption = ref<Record<string, any> | null>(null)
+
+const chartRef = ref<InstanceType<typeof ChartCanvas>>()
+
+const step = computed(() => {
+  if (!dataset.value) return 1
+  if (!chartKind.value) return 2
+  return 3
+})
+
+const currentDef = computed(() =>
+  definitions.value.find(d => d.kind === chartKind.value)
+)
+
+const canBuild = computed(() => {
+  if (!dataset.value || !chartKind.value) return false
+  const required = currentDef.value?.fields.filter(f => f.required) ?? []
+  return required.every(f => fieldConfig.value[f.key])
+})
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/admin/analytics/definitions', {
+      credentials: 'include'
+    })
+    if (!res.ok) throw new Error(`获取图表定义失败 (${res.status})`)
+    definitions.value = await res.json()
+    if (definitions.value.length > 0) chartKind.value = definitions.value[0]!.kind
+  } catch (e: any) {
+    defsError.value = e.message ?? '未知错误'
+  } finally {
+    loadingDefs.value = false
+  }
+})
+
+function onUploaded(payload: UploadedDataset) {
+  dataset.value = payload
+  fieldConfig.value = {}
+  buildError.value = ''
+  chartOption.value = null
+}
+
+async function build() {
+  if (!dataset.value || !chartKind.value) return
+  building.value = true
+  buildError.value = ''
+  try {
+    const body = {
+      datasetId: dataset.value.id,
+      chartKind: chartKind.value,
+      config: {
+        ...fieldConfig.value,
+        title: chartTitle.value || undefined
+      }
+    }
+    const res = await fetch('/api/admin/analytics/build', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    if (!res.ok) {
+      const msg = await res.text()
+      throw new Error(msg || `构建失败 (${res.status})`)
+    }
+    const data = await res.json()
+    chartOption.value = data.option
+  } catch (e: any) {
+    buildError.value = e.message ?? '构建出错'
+  } finally {
+    building.value = false
+  }
+}
+
+function exportPNG() {
+  chartRef.value?.exportPNG()
+}
+
+function reset() {
+  dataset.value = null
+  chartOption.value = null
+  buildError.value = ''
+  fieldConfig.value = {}
+}
+</script>
+
+<template>
+  <div class="workbench">
+    <header class="wb-header">
+      <h1 class="wb-title">数据分析工作台</h1>
+      <button class="btn-back" @click="router.push('/admin')">← 返回管理后台</button>
+    </header>
+
+    <div v-if="loadingDefs" class="wb-loading">加载图表定义中…</div>
+    <div v-else-if="defsError" class="wb-error">{{ defsError }}</div>
+
+    <div v-else class="wb-body">
+      <section class="wb-panel">
+        <div class="wb-section" :class="{ done: step > 1 }">
+          <div class="section-title">
+            <span class="step-badge">1</span>
+            上传数据
+          </div>
+          <DatasetUpload @uploaded="onUploaded" />
+        </div>
+
+        <div class="wb-section" :class="{ disabled: step < 2, done: step > 2 }">
+          <div class="section-title">
+            <span class="step-badge">2</span>
+            选择图表类型
+          </div>
+          <ChartOptionsPanel
+            :definitions="definitions"
+            v-model="chartKind"
+            v-model:title="chartTitle"
+          />
+        </div>
+
+        <div class="wb-section" :class="{ disabled: step < 3 }">
+          <div class="section-title">
+            <span class="step-badge">3</span>
+            字段映射
+          </div>
+          <FieldMapper
+            :headers="dataset?.headers ?? []"
+            :chart-kind="chartKind"
+            :definitions="definitions"
+            v-model="fieldConfig"
+          />
+        </div>
+
+        <div class="wb-actions">
+          <p v-if="buildError" class="build-error">{{ buildError }}</p>
+          <div class="btn-row">
+            <button
+              class="btn-build"
+              :disabled="!canBuild || building"
+              @click="build"
+            >
+              {{ building ? '构建中…' : '生成图表' }}
+            </button>
+            <button v-if="dataset" class="btn-reset" @click="reset">重置</button>
+            <button v-if="chartOption" class="btn-export" @click="exportPNG">导出 PNG</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="wb-chart-area">
+        <div v-if="!chartOption && !building" class="chart-placeholder">
+          完成配置后点击「生成图表」
+        </div>
+        <ChartCanvas
+          v-else
+          ref="chartRef"
+          :option="chartOption"
+          :loading="building"
+        />
+      </section>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.workbench { min-height: 100vh; background: #f5f6fa; display: flex; flex-direction: column; }
+.wb-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: #fff; border-bottom: 1px solid #e8e8e8; }
+.wb-title { margin: 0; font-size: 20px; font-weight: 600; color: #1a1a1a; }
+.btn-back { padding: 6px 16px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; color: #555; cursor: pointer; font-size: 14px; }
+.btn-back:hover { background: #f5f5f5; }
+.wb-loading, .wb-error { padding: 60px; text-align: center; color: #888; font-size: 16px; }
+.wb-error { color: #e53e3e; }
+.wb-body { display: flex; flex: 1; gap: 20px; padding: 24px; align-items: flex-start; }
+.wb-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+.wb-section { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px; transition: opacity 0.2s; }
+.wb-section.disabled { opacity: 0.45; pointer-events: none; }
+.wb-section.done { border-color: #b7eb8f; background: #fcfff5; }
+.section-title { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; }
+.step-badge { width: 22px; height: 22px; border-radius: 50%; background: #1677ff; color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.wb-actions { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px; }
+.build-error { color: #e53e3e; font-size: 13px; margin: 0 0 10px; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-build { flex: 1; padding: 9px 20px; background: #1677ff; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.btn-build:hover:not(:disabled) { background: #0958d9; }
+.btn-build:disabled { background: #b0c4de; cursor: default; }
+.btn-reset { padding: 9px 16px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; color: #555; cursor: pointer; font-size: 14px; }
+.btn-reset:hover { background: #f5f5f5; }
+.btn-export { padding: 9px 16px; border: 1px solid #52c41a; border-radius: 6px; background: #f6ffed; color: #389e0d; cursor: pointer; font-size: 14px; }
+.btn-export:hover { background: #d9f7be; }
+.wb-chart-area { flex: 1; background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; min-height: 460px; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.chart-placeholder { color: #bbb; font-size: 15px; text-align: center; }
+@media (max-width: 860px) {
+  .wb-body { flex-direction: column; padding: 16px; }
+  .wb-panel { width: 100%; }
+  .wb-chart-area { min-height: 320px; width: 100%; }
+}
+</style>

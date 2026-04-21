@@ -17,6 +17,7 @@
     "format": "oxfmt src/"
   },
   "dependencies": {
+    "echarts": "^6.0.0",
     "pinia": "^3.0.4",
     "vue": "beta",
     "vue-router": "^5.0.3",

@@ -347,6 +347,7 @@ function closeEditModal() {
       <div class="header-right">
         <span v-if="user" class="user-badge">{{ user.Username }}</span>
         <a href="/admin/users" @click.prevent="router.push('/admin/users')" class="link">用户管理</a>
+        <a href="/admin/analytics" @click.prevent="router.push('/admin/analytics')" class="link">数据分析</a>
         <button class="btn-logout" @click="logout">退出登录</button>
         <a href="/" @click.prevent="router.push('/')" class="link">← 前台首页</a>
       </div>
@@ -454,6 +455,7 @@ function closeEditModal() {
                     <button class="btn-share" @click="generateShareLink(form)">专用链接</button>
                     <button class="btn-edit" @click="openEditModal(form)">编辑</button>
                     <button class="btn-export" @click="exportCSV(form.Name)">导出 CSV</button>
+                    <button class="btn-analytics" @click="router.push('/admin/analytics')">分析</button>
                   </div>
                 </td>
               </tr>
@@ -482,6 +484,7 @@ function closeEditModal() {
               <button class="btn-share" @click="generateShareLink(form)">专用链接</button>
               <button class="btn-edit" @click="openEditModal(form)">编辑</button>
               <button class="btn-export" @click="exportCSV(form.Name)">导出</button>
+              <button class="btn-analytics" @click="router.push('/admin/analytics')">分析</button>
             </div>
           </article>
         </div>
@@ -849,7 +852,7 @@ tr:hover td { background: #f9fbff; }
   gap: .5rem;
 }
 
-.btn-view-data, .btn-view, .btn-share, .btn-edit, .btn-export {
+.btn-view-data, .btn-view, .btn-share, .btn-edit, .btn-export, .btn-analytics {
   min-width: 86px;
   height: 34px;
   padding: 0 .75rem;
@@ -867,7 +870,8 @@ tr:hover td { background: #f9fbff; }
 .btn-share { background: #f0ecff; color: #5b43b8; }
 .btn-edit { background: #e8f8ef; color: #1d7a47; }
 .btn-export { background: var(--bg-soft-green); color: var(--status-success); }
-.btn-view-data:hover, .btn-view:hover, .btn-share:hover, .btn-edit:hover, .btn-export:hover {
+.btn-analytics { background: #e6f4ff; color: #0958d9; }
+.btn-view-data:hover, .btn-view:hover, .btn-share:hover, .btn-edit:hover, .btn-export:hover, .btn-analytics:hover {
   opacity: .95;
   transform: translateY(-1px);
   box-shadow: 0 3px 10px rgba(17, 24, 39, .08);
@@ -877,7 +881,8 @@ tr:hover td { background: #f9fbff; }
 .btn-view:focus-visible,
 .btn-share:focus-visible,
 .btn-edit:focus-visible,
-.btn-export:focus-visible {
+.btn-export:focus-visible,
+.btn-analytics:focus-visible {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .2);
 }
 
