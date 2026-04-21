@@ -357,7 +357,7 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 
 // ganttBuildRequest is the JSON body for the gantt build endpoints.
 type ganttBuildRequest struct {
-	DatasetID string           `json:"datasetId"`
+	DatasetID string            `json:"datasetId"`
 	Config    model.GanttConfig `json:"config"`
 }
 
