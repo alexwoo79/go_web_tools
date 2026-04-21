@@ -162,7 +162,7 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 		YCol:         req.Config["yAxis"],
 		Y2Col:        req.Config["y2Axis"],
 		Y3Col:        req.Config["y3Axis"],
-		NameCol:      req.Config["nameField"],
+		NameCol:      pickConfig(req.Config, "nameField", "nameCol"),
 		ValueCol:     req.Config["valueField"],
 		SizeCol:      req.Config["size"],
 		SourceCol:    req.Config["sourceCol"],
@@ -463,6 +463,15 @@ func configFields(cfg map[string]string) []string {
 		}
 	}
 	return out
+}
+
+func pickConfig(cfg map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(cfg[k]); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func recommendChartKinds(fields []handler.FieldInfo) []string {
