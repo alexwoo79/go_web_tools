@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"math"
 	"mime/multipart"
 	"path/filepath"
 	"strconv"
@@ -83,55 +82,92 @@ func ParseUploadedFile(fh *multipart.FileHeader) (headers []string, rows [][]str
 	}
 }
 
-// ParseDate attempts to parse a date/time string using 20+ common formats,
-// including Chinese date strings and Excel serial date numbers.
+// ParseDate attempts to parse a date/time string using common formats,
+// including short-year formats and Excel serial date numbers.
 func ParseDate(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return time.Time{}, fmt.Errorf("空日期字符串")
 	}
 
-	// Excel serial number (e.g. "44927")
-	if n, err := strconv.ParseFloat(s, 64); err == nil && n > 0 {
-		// Excel epoch: Jan 0, 1900. Adjust for leap-year bug.
-		epoch := time.Date(1899, 12, 30, 0, 0, 0, 0, time.UTC)
-		days := int(n)
-		frac := n - float64(days)
-		secs := int(math.Round(frac * 86400))
-		t := epoch.AddDate(0, 0, days).Add(time.Duration(secs) * time.Second)
-		if t.Year() >= 1900 && t.Year() <= 2100 {
-			return t, nil
-		}
-	}
-
 	layouts := []string{
 		time.RFC3339,
+		time.RFC3339Nano,
+		"01-02-06",
+		"1-2-06",
+		"01/02/06",
+		"1/2/06",
+		"01.02.06",
+		"1.2.06",
+		"01-02-2006",
+		"1-2-2006",
+		"01/02/2006",
+		"1/2/2006",
+		"01-02-06 15:04",
+		"1-2-06 15:04",
+		"01-02-06 15:04:05",
+		"1-2-06 15:04:05",
 		"2006-01-02T15:04:05",
 		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
 		"2006-01-02",
+		"2006-1-2",
 		"2006/01/02",
-		"01/02/2006",
-		"01-02-2006",
+		"2006/1/2",
+		"2006.01.02",
+		"2006.1.2",
+		"2006年01月02日",
+		"2006年1月2日",
+		"2006-1-2 15:04:05",
+		"2006-1-2 15:04",
+		"2006/01/02 15:04:05",
+		"2006/01/02 15:04",
+		"2006/1/2 15:04:05",
+		"2006/1/2 15:04",
+		"1/2/2006 15:04",
+		"1/2/2006 15:04:05",
+		"01/02/2006 15:04",
+		"01/02/2006 15:04:05",
+		"2/1/2006",
+		"2/1/2006 15:04",
+		"2/1/2006 15:04:05",
 		"02/01/2006",
+		"02/01/2006 15:04",
+		"02/01/2006 15:04:05",
+		"2-1-2006",
+		"2-1-2006 15:04",
+		"2-1-2006 15:04:05",
 		"02-01-2006",
+		"02-01-2006 15:04",
+		"02-01-2006 15:04:05",
 		"Jan 2, 2006",
 		"Jan 2 2006",
 		"January 2, 2006",
 		"January 2 2006",
-		"2006年01月02日",
-		"2006年1月2日",
-		"2006-1-2",
-		"2006/1/2",
-		"1/2/2006",
 		"2 Jan 2006",
 		"2-Jan-2006",
 		"20060102",
 	}
 
 	for _, layout := range layouts {
-		if t, err := time.Parse(layout, s); err == nil {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
 			return t, nil
 		}
+	}
+
+	// Excel serial date (e.g. 45291 or 45291.5).
+	if serial, err := strconv.ParseFloat(s, 64); err == nil {
+		if t, err := excelize.ExcelDateToTime(serial, false); err == nil {
+			return t, nil
+		}
+		if t, err := excelize.ExcelDateToTime(serial, true); err == nil {
+			return t, nil
+		}
+	}
+
+	// Unix milliseconds timestamp (13+ digits)
+	if unixMS, err := strconv.ParseInt(s, 10, 64); err == nil && len(s) >= 12 {
+		return time.UnixMilli(unixMS), nil
 	}
 
 	return time.Time{}, fmt.Errorf("无法解析日期: %q", s)

@@ -76,6 +76,26 @@ func TestParseDate_excelSerial(t *testing.T) {
 	}
 }
 
+func TestParseDate_shortYearMDY(t *testing.T) {
+	got, err := dataset.ParseDate("04-07-26")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Year() != 2026 || int(got.Month()) != 4 || got.Day() != 7 {
+		t.Fatalf("unexpected date: %v", got)
+	}
+}
+
+func TestParseDate_shortYearMDY_withTime(t *testing.T) {
+	got, err := dataset.ParseDate("04-07-26 08:30")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Year() != 2026 || int(got.Month()) != 4 || got.Day() != 7 || got.Hour() != 8 || got.Minute() != 30 {
+		t.Fatalf("unexpected datetime: %v", got)
+	}
+}
+
 func TestParseDate_invalid(t *testing.T) {
 	_, err := dataset.ParseDate("not-a-date")
 	if err == nil {

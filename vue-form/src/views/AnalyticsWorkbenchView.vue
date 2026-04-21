@@ -102,7 +102,8 @@ onMounted(async () => {
       credentials: 'include'
     })
     if (!res.ok) throw new Error(`获取图表定义失败 (${res.status})`)
-    definitions.value = await res.json()
+    const data = await res.json()
+    definitions.value = Array.isArray(data) ? data : (Array.isArray(data?.definitions) ? data.definitions : [])
     if (definitions.value.length > 0) chartKind.value = definitions.value[0]!.kind
   } catch (e: any) {
     defsError.value = e.message ?? '未知错误'

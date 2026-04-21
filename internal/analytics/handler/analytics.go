@@ -135,9 +135,7 @@ func (ah *AnalyticsHandler) DeleteDatasetHandler(w http.ResponseWriter, r *http.
 
 // DefinitionsHandler handles GET /api/admin/analytics/definitions
 func (ah *AnalyticsHandler) DefinitionsHandler(w http.ResponseWriter, r *http.Request) {
-	jsonResp(w, http.StatusOK, map[string]any{
-		"definitions": viz.Definitions(),
-	})
+	jsonResp(w, http.StatusOK, viz.Definitions())
 }
 
 // BuildHandler handles POST /api/admin/analytics/build

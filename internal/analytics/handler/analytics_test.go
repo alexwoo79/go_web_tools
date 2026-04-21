@@ -19,22 +19,14 @@ func TestDefinitionsHandler_returnsDefinitions(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d; body: %s", rr.Code, rr.Body.String())
 	}
-	var body map[string]any
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+	var defs []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &defs); err != nil {
 		t.Fatalf("response is not valid JSON: %v", err)
 	}
-	defs, ok := body["definitions"]
-	if !ok {
-		t.Fatal("response missing 'definitions' key")
+	if len(defs) < 16 {
+		t.Fatalf("want at least 16 definitions, got %d", len(defs))
 	}
-	defsSlice, ok := defs.([]any)
-	if !ok {
-		t.Fatalf("'definitions' is not an array: %T", defs)
-	}
-	if len(defsSlice) < 16 {
-		t.Fatalf("want at least 16 definitions, got %d", len(defsSlice))
-	}
-	t.Logf("definitions endpoint returned %d chart kinds", len(defsSlice))
+	t.Logf("definitions endpoint returned %d chart kinds", len(defs))
 }
 
 func TestDefinitionsHandler_contentType(t *testing.T) {

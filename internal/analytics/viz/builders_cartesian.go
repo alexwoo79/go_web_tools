@@ -11,7 +11,15 @@ import (
 )
 
 func parseFloat(value string) (float64, error) {
-	return strconv.ParseFloat(strings.TrimSpace(value), 64)
+	v := strings.TrimSpace(value)
+	if n, err := strconv.ParseFloat(v, 64); err == nil {
+		return n, nil
+	}
+	// Fallback: when users map date columns in generic charts, treat dates as Unix milliseconds.
+	if t, err := dataset.ParseDate(v); err == nil {
+		return float64(t.UnixMilli()), nil
+	}
+	return 0, fmt.Errorf("invalid number/date: %q", v)
 }
 
 func buildCartesian(ds model.Dataset, cfg model.VizConfig) (map[string]any, error) {
