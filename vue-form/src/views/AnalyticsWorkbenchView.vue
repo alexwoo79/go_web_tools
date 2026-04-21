@@ -14,6 +14,10 @@ interface FieldDef {
   label: string
   description?: string
   required?: boolean
+  multi?: boolean
+  type?: string
+  options?: string[]
+  aliases?: string[]
 }
 
 interface ChartDefinition {
@@ -47,7 +51,7 @@ const defsError = ref('')
 const dataset = ref<UploadedDataset | null>(null)
 const chartKind = ref('')
 const chartTitle = ref('')
-const fieldConfig = ref<Record<string, string>>({})
+const fieldConfig = ref<Record<string, any>>({})
 const ganttConfig = ref<Record<string, string>>({})
 
 const building = ref(false)
@@ -143,6 +147,12 @@ async function build() {
       const body = {
         datasetId: dataset.value.id,
         chartKind: chartKind.value,
+        schemaVersion: 2,
+        configV2: {
+          ...fieldConfig.value,
+          title: chartTitle.value || undefined,
+        },
+        // Keep legacy payload for backward compatibility during migration window.
         config: { ...fieldConfig.value, title: chartTitle.value || undefined }
       }
       const res = await fetch('/api/admin/analytics/build', {

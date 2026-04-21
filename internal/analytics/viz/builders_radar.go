@@ -112,8 +112,11 @@ func init() {
 		Kind: "radar", Label: "雷达图", Family: "构成分析",
 		Description: "多指标能力画像", Hint: "适合少量核心维度的平均或代表值。",
 		Fields: []model.FieldDef{
-			{Key: "nameCol", Label: "指标名称字段", Required: true},
-			{Key: "yAxis", Label: "数值字段（可多选）", Required: true},
+			{Key: "nameCol", Label: "指标名称字段", Required: true, Type: "column", Aliases: []string{"nameField"}},
+			{Key: "yCol", Label: "主数值字段", Required: true, Type: "column", Aliases: []string{"yAxis"}},
+			{Key: "y2Col", Label: "第 2 数值字段", Type: "column", Aliases: []string{"y2Axis"}},
+			{Key: "y3Col", Label: "第 3 数值字段", Type: "column", Aliases: []string{"y3Axis"}},
+			{Key: "yExtraCols", Label: "扩展数值字段", Description: "可多选", Type: "column", Multi: true},
 		},
 	}, buildRadar)
 }

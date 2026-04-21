@@ -77,9 +77,9 @@ func buildRelation(ds model.Dataset, cfg model.VizConfig) (map[string]any, error
 
 func init() {
 	relationFields := []model.FieldDef{
-		{Key: "sourceCol", Label: "来源字段", Required: true},
-		{Key: "targetCol", Label: "目标字段", Required: true},
-		{Key: "linkValueCol", Label: "权重字段", Required: false},
+		{Key: "sourceCol", Label: "来源字段", Required: true, Type: "column"},
+		{Key: "targetCol", Label: "目标字段", Required: true, Type: "column"},
+		{Key: "linkValueCol", Label: "权重字段", Required: false, Type: "column"},
 	}
 	register(model.ChartDefinition{
 		Kind: "sankey", Label: "桑基图", Family: "关系流向",

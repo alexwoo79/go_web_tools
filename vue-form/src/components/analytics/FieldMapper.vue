@@ -21,11 +21,11 @@ const props = defineProps<{
   headers: string[]
   chartKind: string
   definitions: ChartDefinition[]
-  modelValue: Record<string, string>
+  modelValue: Record<string, any>
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', config: Record<string, string>): void
+  (e: 'update:modelValue', config: Record<string, any>): void
 }>()
 
 const currentDef = computed(() =>
@@ -34,7 +34,19 @@ const currentDef = computed(() =>
 
 const fields = computed(() => currentDef.value?.fields ?? [])
 
-function onSelect(key: string, value: string) {
+function onSelect(key: string, valueOrEvent: Event | string) {
+  // Support both programmatic calls and DOM events
+  let value: any
+  if (typeof valueOrEvent === 'string') {
+    value = valueOrEvent
+  } else {
+    const el = valueOrEvent.target as HTMLSelectElement
+    if (el.multiple) {
+      value = Array.from(el.selectedOptions).map(o => o.value)
+    } else {
+      value = el.value
+    }
+  }
   emit('update:modelValue', { ...props.modelValue, [key]: value })
 }
 </script>
@@ -52,10 +64,11 @@ function onSelect(key: string, value: string) {
         </label>
         <select
           class="field-select"
-          :value="modelValue[field.key] ?? ''"
-          @change="onSelect(field.key, ($event.target as HTMLSelectElement).value)"
+          :multiple="field.multi"
+          :value="modelValue[field.key] ?? (field.multi ? [] : '')"
+          @change="onSelect(field.key, $event)"
         >
-          <option value="">（不使用）</option>
+          <option v-if="!field.multi" value="">（不使用）</option>
           <option v-for="h in headers" :key="h" :value="h">{{ h }}</option>
         </select>
       </div>

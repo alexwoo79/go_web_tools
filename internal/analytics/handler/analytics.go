@@ -154,24 +154,89 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	cfg := model.VizConfig{
-		ChartKind:    req.ChartKind,
-		Title:        req.Config["title"],
-		SubTitle:     req.Config["subTitle"],
-		XCol:         req.Config["xAxis"],
-		YCol:         req.Config["yAxis"],
-		Y2Col:        req.Config["y2Axis"],
-		Y3Col:        req.Config["y3Axis"],
-		NameCol:      pickConfig(req.Config, "nameField", "nameCol"),
-		ValueCol:     req.Config["valueField"],
-		SizeCol:      req.Config["size"],
-		SourceCol:    req.Config["sourceCol"],
-		TargetCol:    req.Config["targetCol"],
-		LinkValueCol: req.Config["linkValueCol"],
-		NodeIDCol:    req.Config["nodeIDCol"],
-		ParentIDCol:  req.Config["parentIDCol"],
-		NodeValueCol: req.Config["nodeValueCol"],
-		SeriesName:   req.Config["seriesName"],
+	cfg := model.VizConfig{ChartKind: req.ChartKind}
+	if req.SchemaVersion >= 2 && req.ConfigV2 != nil {
+		cfg = model.VizConfig{
+			ChartKind:       req.ChartKind,
+			Title:           req.ConfigV2.Title,
+			SubTitle:        req.ConfigV2.SubTitle,
+			Theme:           req.ConfigV2.Theme,
+			SeriesName:      req.ConfigV2.SeriesName,
+			Series2Name:     req.ConfigV2.Series2Name,
+			Series3Name:     req.ConfigV2.Series3Name,
+			YMetricCount:    req.ConfigV2.YMetricCount,
+			XCol:            req.ConfigV2.XCol,
+			YCol:            req.ConfigV2.YCol,
+			Y2Col:           req.ConfigV2.Y2Col,
+			Y3Col:           req.ConfigV2.Y3Col,
+			YExtraCols:      req.ConfigV2.YExtraCols,
+			NameCol:         req.ConfigV2.NameCol,
+			ValueCol:        req.ConfigV2.ValueCol,
+			Value2Col:       req.ConfigV2.Value2Col,
+			SizeCol:         req.ConfigV2.SizeCol,
+			SwapAxis:        req.ConfigV2.SwapAxis,
+			SmoothLine:      req.ConfigV2.SmoothLine,
+			SortMode:        req.ConfigV2.SortMode,
+			AggregateByName: req.ConfigV2.AggregateByName,
+			GaugeMode:       req.ConfigV2.GaugeMode,
+			SourceCol:       req.ConfigV2.SourceCol,
+			TargetCol:       req.ConfigV2.TargetCol,
+			LinkValueCol:    req.ConfigV2.LinkValueCol,
+			NodeIDCol:       req.ConfigV2.NodeIDCol,
+			ParentIDCol:     req.ConfigV2.ParentIDCol,
+			NodeValueCol:    req.ConfigV2.NodeValueCol,
+		}
+	}
+	if req.Config != nil {
+		// Keep legacy keys compatible during migration.
+		if cfg.Title == "" {
+			cfg.Title = req.Config["title"]
+		}
+		if cfg.SubTitle == "" {
+			cfg.SubTitle = req.Config["subTitle"]
+		}
+		if cfg.XCol == "" {
+			cfg.XCol = pickConfig(req.Config, "xCol", "xAxis")
+		}
+		if cfg.YCol == "" {
+			cfg.YCol = pickConfig(req.Config, "yCol", "yAxis")
+		}
+		if cfg.Y2Col == "" {
+			cfg.Y2Col = pickConfig(req.Config, "y2Col", "y2Axis")
+		}
+		if cfg.Y3Col == "" {
+			cfg.Y3Col = pickConfig(req.Config, "y3Col", "y3Axis")
+		}
+		if cfg.NameCol == "" {
+			cfg.NameCol = pickConfig(req.Config, "nameCol", "nameField")
+		}
+		if cfg.ValueCol == "" {
+			cfg.ValueCol = pickConfig(req.Config, "valueCol", "valueField")
+		}
+		if cfg.SizeCol == "" {
+			cfg.SizeCol = pickConfig(req.Config, "sizeCol", "size")
+		}
+		if cfg.SourceCol == "" {
+			cfg.SourceCol = req.Config["sourceCol"]
+		}
+		if cfg.TargetCol == "" {
+			cfg.TargetCol = req.Config["targetCol"]
+		}
+		if cfg.LinkValueCol == "" {
+			cfg.LinkValueCol = req.Config["linkValueCol"]
+		}
+		if cfg.NodeIDCol == "" {
+			cfg.NodeIDCol = req.Config["nodeIDCol"]
+		}
+		if cfg.ParentIDCol == "" {
+			cfg.ParentIDCol = req.Config["parentIDCol"]
+		}
+		if cfg.NodeValueCol == "" {
+			cfg.NodeValueCol = req.Config["nodeValueCol"]
+		}
+		if cfg.SeriesName == "" {
+			cfg.SeriesName = req.Config["seriesName"]
+		}
 	}
 
 	ownerID := ah.adminUserID(r)

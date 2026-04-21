@@ -143,16 +143,16 @@ func buildGauge(ds model.Dataset, cfg model.VizConfig) (map[string]any, error) {
 
 func init() {
 	itemFields := []model.FieldDef{
-		{Key: "nameField", Label: "名称字段", Required: true},
-		{Key: "valueField", Label: "数值字段", Required: true},
+		{Key: "nameCol", Label: "名称字段", Description: "分类/标签列", Required: true, Type: "column", Aliases: []string{"nameField"}},
+		{Key: "valueCol", Label: "数值字段", Description: "主数值列", Required: true, Type: "column", Aliases: []string{"valueField"}},
 	}
 	register(model.ChartDefinition{
 		Kind: "scatter", Label: "散点图", Family: "基础分析",
 		Description: "看分布与相关性", Hint: "支持气泡大小列。",
 		Fields: []model.FieldDef{
-			{Key: "xAxis", Label: "X 轴字段", Required: true},
-			{Key: "yAxis", Label: "Y 轴字段", Required: true},
-			{Key: "size", Label: "气泡大小字段", Required: false},
+			{Key: "xCol", Label: "X 轴字段", Required: true, Type: "column", Aliases: []string{"xAxis"}},
+			{Key: "yCol", Label: "Y 轴字段", Required: true, Type: "column", Aliases: []string{"yAxis"}},
+			{Key: "sizeCol", Label: "气泡大小字段", Required: false, Type: "column", Aliases: []string{"size"}},
 		},
 	}, buildScatter)
 	register(model.ChartDefinition{
@@ -174,7 +174,8 @@ func init() {
 		Kind: "gauge", Label: "仪表盘", Family: "构成分析",
 		Description: "单指标聚合", Hint: "适合单个 KPI。",
 		Fields: []model.FieldDef{
-			{Key: "valueField", Label: "数值字段", Required: true},
+			{Key: "valueCol", Label: "数值字段", Description: "用于聚合计算", Required: true, Type: "column", Aliases: []string{"valueField"}},
+			{Key: "gaugeMode", Label: "聚合方式", Description: "avg/first/max/min", Type: "select", Options: []string{"avg", "first", "max", "min"}},
 		},
 	}, buildGauge)
 

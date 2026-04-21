@@ -91,11 +91,44 @@ type GanttConfig struct {
 	ShowTaskNumber   bool
 }
 
+// BuildConfigV2 is the typed build config introduced in contract version 2.
+type BuildConfigV2 struct {
+	Title           string   `json:"title,omitempty"`
+	SubTitle        string   `json:"subTitle,omitempty"`
+	Theme           string   `json:"theme,omitempty"`
+	SeriesName      string   `json:"seriesName,omitempty"`
+	Series2Name     string   `json:"series2Name,omitempty"`
+	Series3Name     string   `json:"series3Name,omitempty"`
+	YMetricCount    int      `json:"yMetricCount,omitempty"`
+	XCol            string   `json:"xCol,omitempty"`
+	YCol            string   `json:"yCol,omitempty"`
+	Y2Col           string   `json:"y2Col,omitempty"`
+	Y3Col           string   `json:"y3Col,omitempty"`
+	YExtraCols      []string `json:"yExtraCols,omitempty"`
+	NameCol         string   `json:"nameCol,omitempty"`
+	ValueCol        string   `json:"valueCol,omitempty"`
+	Value2Col       string   `json:"value2Col,omitempty"`
+	SizeCol         string   `json:"sizeCol,omitempty"`
+	SwapAxis        bool     `json:"swapAxis,omitempty"`
+	SmoothLine      bool     `json:"smoothLine,omitempty"`
+	SortMode        string   `json:"sortMode,omitempty"`
+	AggregateByName bool     `json:"aggregateByName,omitempty"`
+	GaugeMode       string   `json:"gaugeMode,omitempty"`
+	SourceCol       string   `json:"sourceCol,omitempty"`
+	TargetCol       string   `json:"targetCol,omitempty"`
+	LinkValueCol    string   `json:"linkValueCol,omitempty"`
+	NodeIDCol       string   `json:"nodeIDCol,omitempty"`
+	ParentIDCol     string   `json:"parentIDCol,omitempty"`
+	NodeValueCol    string   `json:"nodeValueCol,omitempty"`
+}
+
 // BuildRequest is the unified chart build request accepted by the API.
 type BuildRequest struct {
-	DatasetID string            `json:"datasetId"`
-	ChartKind string            `json:"chartKind"`
-	Config    map[string]string `json:"config"`
+	DatasetID     string            `json:"datasetId"`
+	ChartKind     string            `json:"chartKind"`
+	SchemaVersion int               `json:"schemaVersion,omitempty"`
+	Config        map[string]string `json:"config,omitempty"`
+	ConfigV2      *BuildConfigV2    `json:"configV2,omitempty"`
 }
 
 // BuildResponse wraps the ECharts option payload returned to the frontend.
@@ -105,9 +138,14 @@ type BuildResponse struct {
 
 // FieldDef describes one required/optional field for a chart type.
 type FieldDef struct {
-	Key      string `json:"key"`
-	Label    string `json:"label"`
-	Required bool   `json:"required"`
+	Key         string   `json:"key"`
+	Label       string   `json:"label"`
+	Description string   `json:"description,omitempty"`
+	Required    bool     `json:"required"`
+	Multi       bool     `json:"multi,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	Options     []string `json:"options,omitempty"`
+	Aliases     []string `json:"aliases,omitempty"`
 }
 
 // ChartDefinition describes a visual builder for the UI.

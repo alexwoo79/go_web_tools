@@ -140,9 +140,11 @@ func buildCartesian(ds model.Dataset, cfg model.VizConfig) (map[string]any, erro
 
 func init() {
 	cartesianFields := []model.FieldDef{
-		{Key: "xAxis", Label: "X 轴字段", Required: true},
-		{Key: "yAxis", Label: "Y 轴字段", Required: true},
-		{Key: "series", Label: "分组字段", Required: false},
+		{Key: "xCol", Label: "X 轴字段", Description: "分类或时间列", Required: true, Type: "column", Aliases: []string{"xAxis"}},
+		{Key: "yCol", Label: "Y 轴字段", Description: "主数值列", Required: true, Type: "column", Aliases: []string{"yAxis"}},
+		{Key: "y2Col", Label: "Y2 字段", Description: "第 2 数值列", Type: "column", Aliases: []string{"y2Axis"}},
+		{Key: "y3Col", Label: "Y3 字段", Description: "第 3 数值列", Type: "column", Aliases: []string{"y3Axis"}},
+		{Key: "yExtraCols", Label: "扩展 Y 字段", Description: "第 4+ 数值列", Type: "column", Multi: true},
 	}
 	register(model.ChartDefinition{
 		Kind: "bar", Label: "柱状图", Family: "基础分析",

@@ -148,9 +148,10 @@ func buildHierarchy(ds model.Dataset, cfg model.VizConfig) (map[string]any, erro
 
 func init() {
 	hierarchyFields := []model.FieldDef{
-		{Key: "nodeIDCol", Label: "节点ID字段", Required: true},
-		{Key: "parentIDCol", Label: "父节点字段", Required: true},
-		{Key: "nodeValueCol", Label: "数值字段", Required: false},
+		{Key: "nodeIDCol", Label: "节点ID字段", Required: true, Type: "column"},
+		{Key: "parentIDCol", Label: "父节点字段", Required: true, Type: "column"},
+		{Key: "nameCol", Label: "显示名称字段", Required: false, Type: "column", Aliases: []string{"nameField"}},
+		{Key: "nodeValueCol", Label: "数值字段", Required: false, Type: "column"},
 	}
 	register(model.ChartDefinition{
 		Kind: "tree", Label: "树图", Family: "层级结构",
