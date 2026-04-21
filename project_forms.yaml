@@ -1,0 +1,95 @@
+# 项目管理相关表单
+forms:
+  - name: "project_task"
+    title: "项目任务管理"
+    description: "创建和分配项目任务，跟踪进度"
+    category: "project"
+    sort_order: 310
+    priority: "high"
+    status: "published"
+    publish_at: "2026-03-14 09:00:00"
+    model:
+      table_name: "project_task"
+    fields:
+      - name: "task_name"
+        label: "任务名称"
+        type: "text"
+        placeholder: "请输入任务名称"
+        required: true
+
+      - name: "assignee"
+        label: "负责人"
+        type: "text"
+        placeholder: "请输入负责人姓名"
+        required: true
+
+      - name: "priority"
+        label: "优先级"
+        type: "radio"
+        options:
+          - "🔴 紧急且重要"
+          - "🟠 重要不紧急"
+          - "🟡 紧急不重要"
+          - "🟢 不紧急不重要"
+        required: true
+
+      - name: "status"
+        label: "任务状态"
+        type: "select"
+        options:
+          - "待开始"
+          - "进行中"
+          - "已完成"
+          - "已暂停"
+          - "已取消"
+        required: true
+
+      - name: "start_date"
+        label: "开始日期"
+        type: "date"
+        required: true
+
+      - name: "end_date"
+        label: "截止日期"
+        type: "date"
+        required: true
+
+      - name: "start_time"
+        label: "开始时间"
+        type: "time"
+        required: false
+
+      - name: "estimated_hours"
+        label: "预计工时（小时）"
+        type: "number"
+        placeholder: "例如：8"
+        min: 0.5
+        max: 100
+        step: 0.5
+        required: true
+
+      - name: "tags"
+        label: "任务标签"
+        type: "checkbox"
+        options:
+          - "前端开发"
+          - "后端开发"
+          - "数据库"
+          - "UI 设计"
+          - "测试"
+          - "文档"
+          - "部署"
+          - "会议"
+        required: false
+
+      - name: "description"
+        label: "任务描述"
+        type: "textarea"
+        placeholder: "请详细描述任务内容、要求和注意事项..."
+        required: true
+
+      - name: "attachment_url"
+        label: "附件链接"
+        type: "url"
+        placeholder: "https://example.com/file.pdf"
+        required: false

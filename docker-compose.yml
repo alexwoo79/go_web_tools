@@ -1,0 +1,13 @@
+services:
+  go-form:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: go_form_web:local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./bin/config.yaml:/app/bin/config.yaml:ro
+      - ./data:/app/data
+    command: [ "./bin/go-web", "--config", "./bin/config.yaml" ]
+    restart: unless-stopped
