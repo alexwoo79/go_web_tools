@@ -106,7 +106,7 @@ Verification:
 - E2E: `npx playwright test e2e/vue.spec.ts --project=chromium --reporter=line` output `1 passed`.
 
 Commit:
-- Pending (Batch 5 not committed yet in this entry).
+- `09e19c4` - phase5: batch5 layered codes, schema docs, and code-driven e2e
 
 ## Notes
 This file is maintained as a historical record. Follow-up entries should append date, changes, verification results, and commit hash.
