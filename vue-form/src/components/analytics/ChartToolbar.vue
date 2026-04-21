@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
+interface ThemeOption {
+  label: string
+  value: string
+}
+
 const props = defineProps<{
   chartRef?: {
     exportPNG?: () => void
@@ -10,7 +15,23 @@ const props = defineProps<{
     enterFullscreen?: () => void
   }
   title?: string
+  theme?: string
+  themeOptions?: ThemeOption[]
 }>()
+
+const emit = defineEmits<{
+  (e: 'update:theme', value: string): void
+}>()
+
+const defaultThemeOptions: ThemeOption[] = [
+  { label: '默认主题', value: 'default' },
+  { label: 'Dark', value: 'dark' },
+  { label: 'Vintage', value: 'vintage' },
+  { label: 'Macarons', value: 'macarons' },
+  { label: 'Shine', value: 'shine' },
+  { label: 'Roma', value: 'roma' },
+  { label: 'Infographic', value: 'infographic' },
+]
 
 const copyMsg = ref('')
 
@@ -35,6 +56,10 @@ async function doCopyJSON() {
 function doFullscreen() {
   props.chartRef?.enterFullscreen?.()
 }
+
+function onThemeChange(v: string) {
+  emit('update:theme', v)
+}
 </script>
 
 <template>
@@ -42,6 +67,16 @@ function doFullscreen() {
     <div class="toolbar">
       <span v-if="title" class="toolbar-title">{{ title }}</span>
       <div class="toolbar-actions">
+        <select
+          class="tb-select"
+          :value="theme || 'default'"
+          @change="onThemeChange(($event.target as HTMLSelectElement).value)"
+          title="图表主题"
+        >
+          <option v-for="item in (themeOptions && themeOptions.length ? themeOptions : defaultThemeOptions)" :key="item.value" :value="item.value">
+            {{ item.label }}
+          </option>
+        </select>
         <button class="tb-btn" title="导出 PNG" @click="doExportPNG">
           <span>↓ PNG</span>
         </button>
@@ -98,6 +133,19 @@ function doFullscreen() {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+}
+.tb-select {
+  height: 28px;
+  border: 1px solid #d9d9d9;
+  border-radius: 5px;
+  background: #fff;
+  color: #555;
+  font-size: 12px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.tb-select:hover {
+  border-color: #1677ff;
 }
 .tb-btn {
   padding: 4px 10px;

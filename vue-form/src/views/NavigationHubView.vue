@@ -7,6 +7,7 @@ const router = useRouter()
 const auth = useAuthStore()
 
 const roleText = computed(() => auth.user?.role === 'admin' ? '管理员' : '普通用户')
+const isAdmin = computed(() => auth.user?.role === 'admin')
 
 async function logout() {
   await fetch('/api/logout', { method: 'POST' })
@@ -37,6 +38,18 @@ async function logout() {
       <button class="entry-card" @click="router.push('/admin/analytics')">
         <h2>数据分析作图</h2>
         <p>上传数据、配置图表映射并生成分析图表。</p>
+        <span>进入 →</span>
+      </button>
+
+      <button v-if="isAdmin" class="entry-card" @click="router.push('/admin')">
+        <h2>表单后台管理</h2>
+        <p>管理表单配置、查看数据并维护后台设置。</p>
+        <span>进入 →</span>
+      </button>
+
+      <button v-if="isAdmin" class="entry-card" @click="router.push('/admin/users')">
+        <h2>用户管理</h2>
+        <p>查看、导入、编辑用户并调整权限。</p>
         <span>进入 →</span>
       </button>
     </main>

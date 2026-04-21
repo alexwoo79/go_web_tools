@@ -39,7 +39,6 @@ async function login() {
   <div class="login-page">
     <div class="login-card">
       <h1>用户登录</h1>
-      <p class="subtitle">登录后可提交并查看自己的填报记录</p>
 
       <form @submit.prevent="login">
         <div class="field">
@@ -88,7 +87,7 @@ async function login() {
   backdrop-filter: blur(8px);
 }
 
-h1 { margin: 0 0 .3rem; font-size: 1.5rem; color: #1a1a2e; }
+h1 { margin: 0 0 .8rem; font-size: 1.5rem; color: #1a1a2e; text-align: center; }
 .subtitle { color: #888; margin: 0 0 1.8rem; font-size: .9rem; }
 
 .field { margin-bottom: 1.1rem; }

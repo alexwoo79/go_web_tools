@@ -86,6 +86,13 @@ const ganttRef = ref<InstanceType<typeof GanttChart>>()
 const formName = computed(() => String(route.params.formName ?? ''))
 
 const currentDef = computed(() => definitions.value.find(d => d.kind === chartKind.value))
+const chartTheme = computed(() => String(optionConfig.value.theme || chartOption.value?.theme || 'default'))
+const toolbarTheme = computed({
+  get: () => chartTheme.value,
+  set: (v: string) => {
+    optionConfig.value = { ...optionConfig.value, theme: v }
+  }
+})
 const canBuild = computed(() => {
   if (!chartKind.value && !isGanttMode.value) return false
   if (isGanttMode.value) {
@@ -366,12 +373,14 @@ onMounted(fetchSchema)
         <ChartToolbar
           v-else
           :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
+          v-model:theme="toolbarTheme"
         >
           <GanttChart
             v-if="isGanttMode && ganttData"
             ref="ganttRef"
             :tasks="ganttData.tasks"
             :stats="ganttData.stats"
+            :theme="toolbarTheme"
             :options="ganttOptions"
           />
           <ChartCanvas
@@ -379,6 +388,7 @@ onMounted(fetchSchema)
             ref="chartRef"
             :option="chartOption"
             :loading="building"
+            :theme="toolbarTheme"
           />
         </ChartToolbar>
       </section>

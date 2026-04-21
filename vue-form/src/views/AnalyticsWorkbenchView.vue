@@ -176,6 +176,12 @@ function sanitizeYSeriesConfig(kind: string, config: Record<string, any>): Recor
 const previewHeaders = computed(() => dataset.value?.headers ?? [])
 const previewRows = computed(() => dataset.value?.preview ?? [])
 const chartTheme = computed(() => String(optionConfig.value.theme || chartOption.value?.theme || 'default'))
+const toolbarTheme = computed({
+  get: () => chartTheme.value,
+  set: (v: string) => {
+    optionConfig.value = { ...optionConfig.value, theme: v }
+  }
+})
 
 function inferHeader(headers: string[], ...keys: string[]): string {
   const lowered = headers.map(header => header.toLowerCase())
@@ -644,6 +650,7 @@ function reset() {
           <ChartToolbar
             v-else
             :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
+            v-model:theme="toolbarTheme"
           >
             <GanttChart
               v-if="isGanttMode && ganttData"
