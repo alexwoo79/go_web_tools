@@ -1,0 +1,64 @@
+openapi: 3.1.0
+info:
+  title: Analytics Error Contract
+  version: 1.0.0
+  description: |
+    Error contract for analytics build endpoints.
+
+paths:
+  /api/admin/analytics/build:
+    post:
+      summary: Build a chart from an uploaded dataset
+      responses:
+        '200':
+          description: Chart build succeeded
+        '400':
+          description: Transport/request errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '422':
+          description: Validation/business errors
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResponse'
+                  - $ref: '#/components/schemas/APIErrorResponse'
+
+  /api/admin/analytics/forms/{formName}/build:
+    post:
+      summary: Build a chart from form submission data
+      parameters:
+        - in: path
+          name: formName
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Chart build succeeded
+        '400':
+          description: Transport/request errors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIErrorResponse'
+        '422':
+          description: Validation/business errors
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationErrorResponse'
+                  - $ref: '#/components/schemas/APIErrorResponse'
+
+components:
+  schemas:
+    APIErrorResponse:
+      $ref: './schemas/api-error-response.schema.json'
+    ValidationIssue:
+      $ref: './schemas/validation-issue.schema.json'
+    ValidationErrorResponse:
+      $ref: './schemas/validation-error-response.schema.json'

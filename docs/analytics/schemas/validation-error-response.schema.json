@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://go-form-web-vue.local/docs/analytics/schemas/validation-error-response.schema.json",
+  "title": "ValidationErrorResponse",
+  "type": "object",
+  "required": ["code", "error", "details"],
+  "properties": {
+    "code": {
+      "type": "string",
+      "const": "VAL_INVALID_CONFIG",
+      "description": "Top-level validation category code"
+    },
+    "error": {
+      "type": "string",
+      "description": "Human-readable summary"
+    },
+    "details": {
+      "type": "array",
+      "items": {
+        "$ref": "./validation-issue.schema.json"
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

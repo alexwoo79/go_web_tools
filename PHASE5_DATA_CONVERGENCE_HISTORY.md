@@ -85,5 +85,28 @@ Verification:
 Commit:
 - `9f68485` - phase5: batch4 standardize error codes and i18n mapping
 
+### 2026-04-21 - Batch 5 (错误码分层 + Schema 文档 + E2E code 断言)
+Implemented changes:
+1. Layered error code taxonomy:
+	- Introduced transport/business/validation code namespaces (`TRN_*`, `BIZ_*`, `VAL_*`).
+	- Added top-level `code` to validation error response for stable contract parsing.
+2. API schema documentation:
+	- Added JSON Schemas for API error payloads and validation details.
+	- Added OpenAPI 3.1 document for analytics build error responses (400/422 contracts).
+3. Frontend code-first localization:
+	- Views now localize top-level error by `code` first, then fallback to server text.
+	- Validation detail localization remains code-driven.
+4. E2E assertion upgraded:
+	- Replaced boilerplate Playwright test with mocked analytics flow.
+	- Asserted UI output is derived from `code` mapping and does not rely on raw backend `message`.
+
+Verification:
+- Backend tests: `go test ./internal/analytics/...` passed.
+- Frontend build: `cd vue-form && npm run build` passed.
+- E2E: `npx playwright test e2e/vue.spec.ts --project=chromium --reporter=line` output `1 passed`.
+
+Commit:
+- Pending (Batch 5 not committed yet in this entry).
+
 ## Notes
 This file is maintained as a historical record. Follow-up entries should append date, changes, verification results, and commit hash.

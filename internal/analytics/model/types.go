@@ -4,9 +4,21 @@ package model
 import "time"
 
 const (
-	// Validation error codes (stable contract for frontend localization).
-	ErrCodeRequiredField   = "ERR_REQUIRED_FIELD"
-	ErrCodeUnsupportedChart = "ERR_UNSUPPORTED_CHART"
+	// Transport-layer errors (request decoding/shape issues).
+	ErrCodeTransportInvalidJSON = "TRN_INVALID_JSON"
+
+	// Business-layer errors (domain/resource/rule issues).
+	ErrCodeBusinessNotFound = "BIZ_NOT_FOUND"
+	ErrCodeBusinessForbidden = "BIZ_FORBIDDEN"
+
+	// Validation-layer errors (field/config contract issues).
+	ErrCodeValidationInvalidConfig   = "VAL_INVALID_CONFIG"
+	ErrCodeValidationRequiredField   = "VAL_REQUIRED_FIELD"
+	ErrCodeValidationUnsupportedChart = "VAL_UNSUPPORTED_CHART"
+
+	// Deprecated aliases kept for compatibility with older clients.
+	ErrCodeRequiredField    = ErrCodeValidationRequiredField
+	ErrCodeUnsupportedChart = ErrCodeValidationUnsupportedChart
 )
 
 // Dataset holds raw tabular data parsed from an uploaded file or a form query.
@@ -151,8 +163,15 @@ type ValidationIssue struct {
 
 // ValidationErrorResponse is returned when build config validation fails.
 type ValidationErrorResponse struct {
+	Code    string            `json:"code"`
 	Error   string            `json:"error"`
 	Details []ValidationIssue `json:"details"`
+}
+
+// APIErrorResponse is a generic coded API error payload.
+type APIErrorResponse struct {
+	Code  string `json:"code"`
+	Error string `json:"error"`
 }
 
 // FieldDef describes one required/optional field for a chart type.

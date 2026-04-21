@@ -142,15 +142,15 @@ func (ah *AnalyticsHandler) DefinitionsHandler(w http.ResponseWriter, r *http.Re
 func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request) {
 	var req model.BuildRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败"})
+		jsonAPIError(w, http.StatusBadRequest, model.ErrCodeTransportInvalidJSON, "请求体解析失败")
 		return
 	}
 	if req.DatasetID == "" {
-		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "datasetId 不能为空"})
+		jsonAPIError(w, http.StatusBadRequest, model.ErrCodeValidationRequiredField, "datasetId 不能为空")
 		return
 	}
 	if req.ChartKind == "" {
-		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "chartKind 不能为空"})
+		jsonAPIError(w, http.StatusBadRequest, model.ErrCodeValidationRequiredField, "chartKind 不能为空")
 		return
 	}
 
@@ -259,6 +259,7 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 
 	if issues := validateBuildConfig(req.ChartKind, cfg); len(issues) > 0 {
 		jsonResp(w, http.StatusUnprocessableEntity, model.ValidationErrorResponse{
+			Code:    model.ErrCodeValidationInvalidConfig,
 			Error:   "配置校验失败，请检查字段映射",
 			Details: issues,
 		})
@@ -268,7 +269,7 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 	ownerID := ah.adminUserID(r)
 	option, err := service.BuildChart(req.DatasetID, ownerID, cfg)
 	if err != nil {
-		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		jsonAPIError(w, http.StatusUnprocessableEntity, model.ErrCodeBusinessNotFound, err.Error())
 		return
 	}
 
@@ -377,7 +378,7 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 	formName := mux.Vars(r)["formName"]
 	fi, ok := ah.primary.GetFormForAnalytics(formName)
 	if !ok {
-		jsonResp(w, http.StatusNotFound, map[string]string{"error": "表单不存在"})
+		jsonAPIError(w, http.StatusNotFound, model.ErrCodeBusinessNotFound, "表单不存在")
 		return
 	}
 
@@ -387,11 +388,11 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 		Fields    []string          `json:"fields"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败"})
+		jsonAPIError(w, http.StatusBadRequest, model.ErrCodeTransportInvalidJSON, "请求体解析失败")
 		return
 	}
 	if req.ChartKind == "" {
-		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "chartKind 不能为空"})
+		jsonAPIError(w, http.StatusBadRequest, model.ErrCodeValidationRequiredField, "chartKind 不能为空")
 		return
 	}
 
@@ -404,7 +405,7 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 	ownerID := ah.adminUserID(r)
 	ds, err := service.FromFormData(ah.primary.DBForAnalytics(), tableName, fi.Name, ownerID, requiredFields)
 	if err != nil {
-		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		jsonAPIError(w, http.StatusUnprocessableEntity, model.ErrCodeBusinessNotFound, err.Error())
 		return
 	}
 
@@ -430,6 +431,7 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 
 	if issues := validateBuildConfig(req.ChartKind, cfg); len(issues) > 0 {
 		jsonResp(w, http.StatusUnprocessableEntity, model.ValidationErrorResponse{
+			Code:    model.ErrCodeValidationInvalidConfig,
 			Error:   "配置校验失败，请检查字段映射",
 			Details: issues,
 		})
@@ -438,7 +440,7 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 
 	option, err := service.BuildChart(ds.ID, ownerID, cfg)
 	if err != nil {
-		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		jsonAPIError(w, http.StatusUnprocessableEntity, model.ErrCodeBusinessNotFound, err.Error())
 		return
 	}
 
@@ -609,7 +611,7 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 	if def == nil {
 		return []model.ValidationIssue{{
 			Field:   "chartKind",
-			Code:    model.ErrCodeUnsupportedChart,
+			Code:    model.ErrCodeValidationUnsupportedChart,
 			Message: "不支持的图形类型",
 		}}
 	}
@@ -629,7 +631,7 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 		seen[f.Key] = true
 		issues = append(issues, model.ValidationIssue{
 			Field:   f.Key,
-			Code:    model.ErrCodeRequiredField,
+			Code:    model.ErrCodeValidationRequiredField,
 			Message: f.Label + " 不能为空",
 		})
 	}
@@ -734,4 +736,8 @@ func jsonResp(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func jsonAPIError(w http.ResponseWriter, status int, code, message string) {
+	jsonResp(w, status, model.APIErrorResponse{Code: code, Error: message})
 }

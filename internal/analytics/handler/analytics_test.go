@@ -55,6 +55,9 @@ func TestBuildHandler_returnsStructuredValidationErrors(t *testing.T) {
 	if _, ok := resp["error"]; !ok {
 		t.Fatalf("want error field, got: %v", resp)
 	}
+	if resp["code"] != "VAL_INVALID_CONFIG" {
+		t.Fatalf("want code VAL_INVALID_CONFIG, got: %v", resp["code"])
+	}
 	details, ok := resp["details"].([]any)
 	if !ok || len(details) == 0 {
 		t.Fatalf("want non-empty details, got: %v", resp["details"])
@@ -90,7 +93,7 @@ func TestBuildHandler_validation422Snapshot(t *testing.T) {
 	}
 
 	got := strings.TrimSpace(rr.Body.String())
-	want := `{"error":"配置校验失败，请检查字段映射","details":[{"field":"xCol","code":"ERR_REQUIRED_FIELD","message":"X 轴字段 不能为空"},{"field":"yCol","code":"ERR_REQUIRED_FIELD","message":"Y 轴字段 不能为空"}]}`
+	want := `{"code":"VAL_INVALID_CONFIG","error":"配置校验失败，请检查字段映射","details":[{"field":"xCol","code":"VAL_REQUIRED_FIELD","message":"X 轴字段 不能为空"},{"field":"yCol","code":"VAL_REQUIRED_FIELD","message":"Y 轴字段 不能为空"}]}`
 	if got != want {
 		t.Fatalf("422 snapshot mismatch\nwant: %s\ngot:  %s", want, got)
 	}

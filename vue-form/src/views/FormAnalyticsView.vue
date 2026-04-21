@@ -6,7 +6,7 @@ import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
 import FieldMapper from '@/components/analytics/FieldMapper.vue'
 import ChartToolbar from '@/components/analytics/ChartToolbar.vue'
 import GanttChart, { type GanttTask, type GanttStats } from '@/components/analytics/GanttChart.vue'
-import { localizeValidationIssue, type ValidationIssue } from '@/utils/analyticsErrorI18n'
+import { localizeErrorCode, localizeValidationIssue, type ValidationIssue } from '@/utils/analyticsErrorI18n'
 
 const GANTT_FIELDS = [
   { key: 'taskCol', label: '任务名列', required: true },
@@ -197,7 +197,7 @@ async function buildFromForm() {
         let msg = `构建失败 (${res.status})`
         try {
           const payload = await res.json()
-          msg = payload?.error || msg
+          msg = localizeErrorCode(payload?.code, payload?.error || msg)
           if (Array.isArray(payload?.details)) {
             const map: Record<string, string> = {}
             for (const item of payload.details as ValidationIssue[]) {
