@@ -257,6 +257,14 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	if issues := validateBuildConfig(req.ChartKind, cfg); len(issues) > 0 {
+		jsonResp(w, http.StatusUnprocessableEntity, model.ValidationErrorResponse{
+			Error:   "配置校验失败，请检查字段映射",
+			Details: issues,
+		})
+		return
+	}
+
 	ownerID := ah.adminUserID(r)
 	option, err := service.BuildChart(req.DatasetID, ownerID, cfg)
 	if err != nil {
@@ -420,6 +428,14 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 		SeriesName:   req.Config["seriesName"],
 	}
 
+	if issues := validateBuildConfig(req.ChartKind, cfg); len(issues) > 0 {
+		jsonResp(w, http.StatusUnprocessableEntity, model.ValidationErrorResponse{
+			Error:   "配置校验失败，请检查字段映射",
+			Details: issues,
+		})
+		return
+	}
+
 	option, err := service.BuildChart(ds.ID, ownerID, cfg)
 	if err != nil {
 		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
@@ -579,6 +595,115 @@ func splitCSV(s string) []string {
 func parseBool(s string) bool {
 	s = strings.TrimSpace(strings.ToLower(s))
 	return s == "1" || s == "true" || s == "on" || s == "yes"
+}
+
+func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.ValidationIssue {
+	defs := viz.Definitions()
+	var def *model.ChartDefinition
+	for i := range defs {
+		if defs[i].Kind == chartKind {
+			def = &defs[i]
+			break
+		}
+	}
+	if def == nil {
+		return []model.ValidationIssue{{Field: "chartKind", Code: "unsupported", Message: "不支持的图形类型"}}
+	}
+
+	issues := make([]model.ValidationIssue, 0)
+	seen := map[string]bool{}
+	for _, f := range def.Fields {
+		if !f.Required {
+			continue
+		}
+		if hasConfigValue(cfg, f.Key, f.Aliases) {
+			continue
+		}
+		if seen[f.Key] {
+			continue
+		}
+		seen[f.Key] = true
+		issues = append(issues, model.ValidationIssue{
+			Field:   f.Key,
+			Code:    "required",
+			Message: f.Label + " 不能为空",
+		})
+	}
+	return issues
+}
+
+func hasConfigValue(cfg model.VizConfig, key string, aliases []string) bool {
+	if configValueSet(cfg, key) {
+		return true
+	}
+	for _, a := range aliases {
+		if configValueSet(cfg, a) {
+			return true
+		}
+	}
+	return false
+}
+
+func configValueSet(cfg model.VizConfig, key string) bool {
+	s := func(v string) bool { return strings.TrimSpace(v) != "" }
+	slice := func(v []string) bool { return len(v) > 0 }
+	key = strings.TrimSpace(key)
+	switch key {
+	case "xCol", "xAxis":
+		return s(cfg.XCol)
+	case "yCol", "yAxis":
+		return s(cfg.YCol)
+	case "y2Col", "y2Axis":
+		return s(cfg.Y2Col)
+	case "y3Col", "y3Axis":
+		return s(cfg.Y3Col)
+	case "yExtraCols":
+		return slice(cfg.YExtraCols)
+	case "nameCol", "nameField":
+		return s(cfg.NameCol)
+	case "valueCol", "valueField":
+		return s(cfg.ValueCol)
+	case "value2Col":
+		return s(cfg.Value2Col)
+	case "sizeCol", "size":
+		return s(cfg.SizeCol)
+	case "sourceCol":
+		return s(cfg.SourceCol)
+	case "targetCol":
+		return s(cfg.TargetCol)
+	case "linkValueCol":
+		return s(cfg.LinkValueCol)
+	case "nodeIDCol":
+		return s(cfg.NodeIDCol)
+	case "parentIDCol":
+		return s(cfg.ParentIDCol)
+	case "nodeValueCol":
+		return s(cfg.NodeValueCol)
+	case "title":
+		return s(cfg.Title)
+	case "subTitle":
+		return s(cfg.SubTitle)
+	case "theme":
+		return s(cfg.Theme)
+	case "seriesName":
+		return s(cfg.SeriesName)
+	case "series2Name":
+		return s(cfg.Series2Name)
+	case "series3Name":
+		return s(cfg.Series3Name)
+	case "sortMode":
+		return s(cfg.SortMode)
+	case "gaugeMode":
+		return s(cfg.GaugeMode)
+	case "smoothLine":
+		return cfg.SmoothLine
+	case "swapAxis":
+		return cfg.SwapAxis
+	case "aggregateByName":
+		return cfg.AggregateByName
+	default:
+		return false
+	}
 }
 
 func recommendChartKinds(fields []handler.FieldInfo) []string {

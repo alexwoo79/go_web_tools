@@ -136,6 +136,19 @@ type BuildResponse struct {
 	Option map[string]any `json:"option"`
 }
 
+// ValidationIssue describes one field-level validation problem.
+type ValidationIssue struct {
+	Field   string `json:"field"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// ValidationErrorResponse is returned when build config validation fails.
+type ValidationErrorResponse struct {
+	Error   string            `json:"error"`
+	Details []ValidationIssue `json:"details"`
+}
+
 // FieldDef describes one required/optional field for a chart type.
 type FieldDef struct {
 	Key         string   `json:"key"`

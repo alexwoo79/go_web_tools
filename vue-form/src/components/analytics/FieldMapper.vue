@@ -23,6 +23,7 @@ const props = defineProps<{
   chartKind: string
   definitions: ChartDefinition[]
   modelValue: Record<string, any>
+  fieldErrors?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -67,6 +68,7 @@ function onSelect(key: string, valueOrEvent: Event | string) {
         </label>
         <select
           class="field-select"
+          :class="{ invalid: !!fieldErrors?.[field.key] }"
           :multiple="field.multi"
           :value="modelValue[field.key] ?? (field.multi ? [] : '')"
           @change="onSelect(field.key, $event)"
@@ -74,6 +76,7 @@ function onSelect(key: string, valueOrEvent: Event | string) {
           <option v-if="!field.multi" value="">（不使用）</option>
           <option v-for="h in headers" :key="h" :value="h">{{ h }}</option>
         </select>
+        <div v-if="fieldErrors?.[field.key]" class="field-error">{{ fieldErrors[field.key] }}</div>
       </div>
     </template>
   </div>
@@ -97,6 +100,7 @@ function onSelect(key: string, valueOrEvent: Event | string) {
 .field-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 10px;
 }
@@ -131,5 +135,14 @@ function onSelect(key: string, valueOrEvent: Event | string) {
   outline: none;
   border-color: #1677ff;
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+.field-select.invalid {
+  border-color: #d93025;
+  box-shadow: 0 0 0 2px rgba(217, 48, 37, 0.1);
+}
+.field-error {
+  margin-left: 152px;
+  color: #d93025;
+  font-size: 12px;
 }
 </style>

@@ -47,7 +47,25 @@ Verification:
 - Frontend build: `cd vue-form && npm run build` passed.
 
 Commit:
-- Pending (Batch 2 not committed yet in this entry).
+- `d60462a` - phase5: batch2 schema-driven options and config split
+
+### 2026-04-21 - Batch 3 (统一配置校验与字段高亮)
+Implemented changes:
+1. Backend unified validation response for chart build:
+	- Added structured response `ValidationErrorResponse` with `details[]` field-level issues.
+	- Added required-field validation based on chart definitions before build execution.
+2. Frontend build error UX upgrade:
+	- Workbench/Form analytics pages parse `details[]` and map errors to field keys.
+	- `FieldMapper` and `ChartOptionsPanel` now support per-field error highlighting and inline messages.
+3. Test coverage:
+	- Added handler test for structured validation response on `/api/admin/analytics/build`.
+
+Verification:
+- Backend tests: `go test ./internal/analytics/...` passed.
+- Frontend build: `cd vue-form && npm run build` passed.
+
+Commit:
+- Pending (Batch 3 not committed yet in this entry).
 
 ## Notes
 This file is maintained as a historical record. Follow-up entries should append date, changes, verification results, and commit hash.

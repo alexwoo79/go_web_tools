@@ -57,6 +57,7 @@ const ganttConfig = ref<Record<string, string>>({})
 
 const building = ref(false)
 const buildError = ref('')
+const buildFieldErrors = ref<Record<string, string>>({})
 const chartOption = ref<Record<string, any> | null>(null)
 const ganttData = ref<{ tasks: GanttTask[]; stats: GanttStats } | null>(null)
 
@@ -123,6 +124,7 @@ function onUploaded(payload: UploadedDataset) {
   optionConfig.value = {}
   ganttConfig.value = {}
   buildError.value = ''
+  buildFieldErrors.value = {}
   chartOption.value = null
   ganttData.value = null
 }
@@ -155,6 +157,7 @@ async function build() {
   if (!dataset.value || !chartKind.value) return
   building.value = true
   buildError.value = ''
+  buildFieldErrors.value = {}
   chartOption.value = null
   ganttData.value = null
   try {
@@ -189,7 +192,23 @@ async function build() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
-      if (!res.ok) throw new Error((await res.text()) || `构建失败 (${res.status})`)
+      if (!res.ok) {
+        let msg = `构建失败 (${res.status})`
+        try {
+          const payload = await res.json()
+          msg = payload?.error || msg
+          if (Array.isArray(payload?.details)) {
+            const map: Record<string, string> = {}
+            for (const item of payload.details) {
+              if (item?.field && item?.message) map[item.field] = item.message
+            }
+            buildFieldErrors.value = map
+          }
+        } catch {
+          msg = (await res.text()) || msg
+        }
+        throw new Error(msg)
+      }
       const data = await res.json()
       chartOption.value = data.option
     }
@@ -213,6 +232,7 @@ function reset() {
   fieldConfig.value = {}
   optionConfig.value = {}
   ganttConfig.value = {}
+  buildFieldErrors.value = {}
 }
 </script>
 
@@ -253,6 +273,7 @@ function reset() {
             v-model="chartKind"
             v-model:title="chartTitle"
             v-model:config="optionConfig"
+            :field-errors="buildFieldErrors"
           />
           <p v-else class="gantt-hint">甘特图将使用下方字段映射渲染任务时间线</p>
         </div>
@@ -268,6 +289,7 @@ function reset() {
             :headers="dataset?.headers ?? []"
             :chart-kind="chartKind"
             :definitions="definitions"
+            :field-errors="buildFieldErrors"
             v-model="fieldConfig"
           />
           <!-- Gantt field mapper -->

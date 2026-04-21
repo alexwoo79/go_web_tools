@@ -68,6 +68,7 @@ const isGanttMode = ref(false)
 
 const building = ref(false)
 const buildError = ref('')
+const buildFieldErrors = ref<Record<string, string>>({})
 const chartOption = ref<Record<string, any> | null>(null)
 const ganttData = ref<{ tasks: GanttTask[]; stats: GanttStats } | null>(null)
 const chartRef = ref<InstanceType<typeof ChartCanvas>>()
@@ -144,6 +145,8 @@ async function fetchSchema() {
 async function buildFromForm() {
   building.value = true
   buildError.value = ''
+  buildFieldErrors.value = {}
+  buildFieldErrors.value = {}
   chartOption.value = null
   ganttData.value = null
   try {
@@ -190,7 +193,23 @@ async function buildFromForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       })
-      if (!res.ok) throw new Error((await res.text()) || `构建失败 (${res.status})`)
+      if (!res.ok) {
+        let msg = `构建失败 (${res.status})`
+        try {
+          const payload = await res.json()
+          msg = payload?.error || msg
+          if (Array.isArray(payload?.details)) {
+            const map: Record<string, string> = {}
+            for (const item of payload.details) {
+              if (item?.field && item?.message) map[item.field] = item.message
+            }
+            buildFieldErrors.value = map
+          }
+        } catch {
+          msg = (await res.text()) || msg
+        }
+        throw new Error(msg)
+      }
       const data = await res.json()
       chartOption.value = data.option
     }
@@ -240,6 +259,7 @@ onMounted(fetchSchema)
             v-model="chartKind"
             v-model:title="chartTitle"
             v-model:config="optionConfig"
+            :field-errors="buildFieldErrors"
           />
         </div>
 
@@ -250,6 +270,7 @@ onMounted(fetchSchema)
             :headers="headers"
             :chart-kind="chartKind"
             :definitions="definitions"
+            :field-errors="buildFieldErrors"
             v-model="fieldConfig"
           />
           <div v-else class="gantt-field-mapper">

@@ -21,6 +21,7 @@ const props = defineProps<{
   modelValue: string
   title: string
   config: Record<string, any>
+  fieldErrors?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
@@ -75,11 +76,13 @@ function updateConfig(key: string, value: any) {
       <label class="opt-label">图表标题</label>
       <input
         class="title-input"
+        :class="{ invalid: !!fieldErrors?.title }"
         type="text"
         :value="title"
         placeholder="（可选）"
         @input="emit('update:title', ($event.target as HTMLInputElement).value)"
       />
+      <div v-if="fieldErrors?.title" class="field-error">{{ fieldErrors.title }}</div>
     </div>
 
     <div v-if="optionFields.length > 0" class="option-grid">
@@ -89,6 +92,7 @@ function updateConfig(key: string, value: any) {
         <select
           v-if="field.type === 'select'"
           class="title-input"
+          :class="{ invalid: !!fieldErrors?.[field.key] }"
           :value="config[field.key] ?? ''"
           @change="updateConfig(field.key, ($event.target as HTMLSelectElement).value)"
         >
@@ -108,6 +112,7 @@ function updateConfig(key: string, value: any) {
         <input
           v-else-if="field.type === 'number'"
           class="title-input"
+          :class="{ invalid: !!fieldErrors?.[field.key] }"
           type="number"
           :value="config[field.key] ?? ''"
           @input="updateConfig(field.key, Number(($event.target as HTMLInputElement).value || 0))"
@@ -116,10 +121,13 @@ function updateConfig(key: string, value: any) {
         <input
           v-else
           class="title-input"
+          :class="{ invalid: !!fieldErrors?.[field.key] }"
           type="text"
           :value="config[field.key] ?? ''"
           @input="updateConfig(field.key, ($event.target as HTMLInputElement).value)"
         />
+
+        <div v-if="fieldErrors?.[field.key]" class="field-error">{{ fieldErrors[field.key] }}</div>
       </div>
     </div>
   </div>
@@ -215,5 +223,13 @@ function updateConfig(key: string, value: any) {
   outline: none;
   border-color: #1677ff;
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+.title-input.invalid {
+  border-color: #d93025;
+  box-shadow: 0 0 0 2px rgba(217, 48, 37, 0.1);
+}
+.field-error {
+  color: #d93025;
+  font-size: 12px;
 }
 </style>
