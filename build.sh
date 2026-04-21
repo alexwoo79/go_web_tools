@@ -20,7 +20,7 @@ build_native() {
 	echo "[3/3] Building Go native binary..."
 	cd "$ROOT_DIR"
 	mkdir -p bin
-	go build -o bin/go-web ./cmd/server
+	CGO_ENABLED=0 go build -o bin/go-web ./cmd/server
 	echo "Build complete: $ROOT_DIR/bin/go-web"
 }
 
