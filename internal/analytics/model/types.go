@@ -8,12 +8,12 @@ const (
 	ErrCodeTransportInvalidJSON = "TRN_INVALID_JSON"
 
 	// Business-layer errors (domain/resource/rule issues).
-	ErrCodeBusinessNotFound = "BIZ_NOT_FOUND"
+	ErrCodeBusinessNotFound  = "BIZ_NOT_FOUND"
 	ErrCodeBusinessForbidden = "BIZ_FORBIDDEN"
 
 	// Validation-layer errors (field/config contract issues).
-	ErrCodeValidationInvalidConfig   = "VAL_INVALID_CONFIG"
-	ErrCodeValidationRequiredField   = "VAL_REQUIRED_FIELD"
+	ErrCodeValidationInvalidConfig    = "VAL_INVALID_CONFIG"
+	ErrCodeValidationRequiredField    = "VAL_REQUIRED_FIELD"
 	ErrCodeValidationUnsupportedChart = "VAL_UNSUPPORTED_CHART"
 
 	// Deprecated aliases kept for compatibility with older clients.

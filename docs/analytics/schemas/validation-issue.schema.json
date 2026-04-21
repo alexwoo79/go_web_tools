@@ -1,23 +1,30 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://go-form-web-vue.local/docs/analytics/schemas/validation-issue.schema.json",
-  "title": "ValidationIssue",
-  "type": "object",
-  "required": ["field", "code", "message"],
-  "properties": {
-    "field": {
-      "type": "string",
-      "description": "Field key in chart config definitions"
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://go-form-web-vue.local/docs/analytics/schemas/validation-issue.schema.json",
+    "title": "ValidationIssue",
+    "type": "object",
+    "required": [
+        "field",
+        "code",
+        "message"
+    ],
+    "properties": {
+        "field": {
+            "type": "string",
+            "description": "Field key in chart config definitions"
+        },
+        "code": {
+            "type": "string",
+            "enum": [
+                "VAL_REQUIRED_FIELD",
+                "VAL_UNSUPPORTED_CHART"
+            ],
+            "description": "Validation-layer machine-readable error code"
+        },
+        "message": {
+            "type": "string",
+            "description": "Human-readable message (not for stable assertions)"
+        }
     },
-    "code": {
-      "type": "string",
-      "enum": ["VAL_REQUIRED_FIELD", "VAL_UNSUPPORTED_CHART"],
-      "description": "Validation-layer machine-readable error code"
-    },
-    "message": {
-      "type": "string",
-      "description": "Human-readable message (not for stable assertions)"
-    }
-  },
-  "additionalProperties": false
+    "additionalProperties": false
 }

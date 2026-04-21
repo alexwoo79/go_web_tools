@@ -1,18 +1,21 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://go-form-web-vue.local/docs/analytics/schemas/api-error-response.schema.json",
-  "title": "APIErrorResponse",
-  "type": "object",
-  "required": ["code", "error"],
-  "properties": {
-    "code": {
-      "type": "string",
-      "description": "Machine-readable transport/business/validation error code"
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://go-form-web-vue.local/docs/analytics/schemas/api-error-response.schema.json",
+    "title": "APIErrorResponse",
+    "type": "object",
+    "required": [
+        "code",
+        "error"
+    ],
+    "properties": {
+        "code": {
+            "type": "string",
+            "description": "Machine-readable transport/business/validation error code"
+        },
+        "error": {
+            "type": "string",
+            "description": "Human-readable error message"
+        }
     },
-    "error": {
-      "type": "string",
-      "description": "Human-readable error message"
-    }
-  },
-  "additionalProperties": false
+    "additionalProperties": false
 }
