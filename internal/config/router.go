@@ -1,6 +1,7 @@
 package config
 
 import (
+	analyticshandler "go-web/internal/analytics/handler"
 	"go-web/internal/handler"
 	"go-web/ui"
 	"io/fs"
@@ -83,7 +84,7 @@ func (s *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(s.indexHTML)
 }
 
-func NewRouter(h *handler.Handler) *mux.Router {
+func NewRouter(h *handler.Handler, ah *analyticshandler.AnalyticsHandler) *mux.Router {
 	r := mux.NewRouter()
 	spa := &spaHandler{}
 
@@ -120,6 +121,14 @@ func NewRouter(h *handler.Handler) *mux.Router {
 	r.HandleFunc("/api/admin/user-password", h.RequireAdmin(h.AdminUpdateUserPasswordHandler)).Methods("POST")
 	r.HandleFunc("/api/public/forms/{token}", h.PublicFormPageHandler).Methods("GET")
 	r.HandleFunc("/api/public/submit/{token}", h.PublicSubmitHandler).Methods("POST")
+
+	// Analytics 路由 (Phase 1)
+	r.HandleFunc("/api/admin/analytics/datasets/upload", ah.RequireAdmin(ah.UploadDatasetHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/analytics/datasets/{id}", ah.RequireAdmin(ah.GetDatasetHandler)).Methods("GET")
+	r.HandleFunc("/api/admin/analytics/datasets/{id}", ah.RequireAdmin(ah.DeleteDatasetHandler)).Methods("DELETE")
+	r.HandleFunc("/api/admin/analytics/definitions", ah.RequireAdmin(ah.DefinitionsHandler)).Methods("GET")
+	r.HandleFunc("/api/admin/analytics/build", ah.RequireAdmin(ah.BuildHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/analytics/validate-hierarchy", ah.RequireAdmin(ah.ValidateHierarchyHandler)).Methods("POST")
 
 	// 所有其他路由由 Vue SPA 处理
 	r.PathPrefix("/").Handler(spa)

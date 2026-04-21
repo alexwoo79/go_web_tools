@@ -277,6 +277,16 @@ func (h *Handler) getCurrentUser(r *http.Request) *Session {
 	return h.sessionMgr.GetSession(cookie.Value)
 }
 
+// SessionUserID returns the user ID for the given session token, or 0 if invalid.
+// Exported for use by sub-handlers (e.g. analytics).
+func (h *Handler) SessionUserID(sessionID string) int {
+	s := h.sessionMgr.GetSession(sessionID)
+	if s == nil {
+		return 0
+	}
+	return s.UserID
+}
+
 // convertToModelsField 将 handler.FieldInfo 转换为 models.FieldInfo
 func convertToModelsField(fi FieldInfo) models.FieldInfo {
 	return models.FieldInfo{

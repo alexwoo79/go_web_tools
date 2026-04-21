@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	analyticshandler "go-web/internal/analytics/handler"
 	"go-web/internal/config"
 	"go-web/internal/handler"
 	"go-web/internal/models"
@@ -223,8 +224,11 @@ func main() {
 	// 初始化处理器
 	h := handler.New(db, formInfos, *configPath, reloadFn)
 
+	// 初始化 Analytics 处理器
+	ah := analyticshandler.New(h)
+
 	// 创建路由（使用 gorilla/mux）
-	r := config.NewRouter(h)
+	r := config.NewRouter(h, ah)
 
 	// 健康检查端点
 	r.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
