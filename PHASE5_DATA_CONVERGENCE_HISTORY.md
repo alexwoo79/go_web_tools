@@ -83,7 +83,7 @@ Verification:
 - Frontend build: `cd vue-form && npm run build` passed.
 
 Commit:
-- Pending (Batch 4 not committed yet in this entry).
+- `9f68485` - phase5: batch4 standardize error codes and i18n mapping
 
 ## Notes
 This file is maintained as a historical record. Follow-up entries should append date, changes, verification results, and commit hash.
