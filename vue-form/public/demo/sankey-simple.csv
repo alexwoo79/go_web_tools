@@ -1,0 +1,7 @@
+Source,Target,LinkValue
+Visit,Inquiry,120
+Inquiry,Proposal,80
+Proposal,Order,55
+Order,Renewal,30
+Visit,DropOff,40
+Proposal,Lost,25

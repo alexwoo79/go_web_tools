@@ -87,6 +87,45 @@ const canBuild = computed(() => {
   return required.every(f => fieldConfig.value[f.key])
 })
 
+const yCountSupportedKinds = new Set(['bar', 'line', 'area', 'stack_bar', 'stack_area', 'radar'])
+
+function normalizeYCount(raw: any): number {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return 1
+  return Math.min(8, Math.max(1, Math.floor(parsed)))
+}
+
+function inferYCountFromConfig(config: Record<string, any>): number {
+  const hasY2 = typeof config.y2Col === 'string' && config.y2Col.trim() !== ''
+  const hasY3 = typeof config.y3Col === 'string' && config.y3Col.trim() !== ''
+  const extras = Array.isArray(config.yExtraCols)
+    ? config.yExtraCols.filter(v => typeof v === 'string' && v.trim() !== '')
+    : []
+  if (extras.length > 0) return Math.min(8, 3 + extras.length)
+  if (hasY3) return 3
+  if (hasY2) return 2
+  return 1
+}
+
+function sanitizeYSeriesConfig(kind: string, config: Record<string, any>): Record<string, any> {
+  if (!yCountSupportedKinds.has(kind)) return config
+
+  const next = { ...config }
+  const hasExplicitYCount = !(config.yMetricCount === undefined || config.yMetricCount === null || String(config.yMetricCount).trim() === '')
+  const yCount = hasExplicitYCount ? normalizeYCount(config.yMetricCount) : inferYCountFromConfig(config)
+  next.yMetricCount = yCount
+
+  if (yCount < 2) next.y2Col = ''
+  if (yCount < 3) next.y3Col = ''
+
+  const extras = Array.isArray(config.yExtraCols)
+    ? config.yExtraCols.filter(v => typeof v === 'string' && v.trim() !== '')
+    : []
+  next.yExtraCols = extras.slice(0, Math.max(0, yCount - 3))
+
+  return next
+}
+
 function toLegacyConfig(v2: Record<string, any>): Record<string, string> {
   const out: Record<string, string> = {}
   const set = (k: string, v: any) => {
@@ -162,8 +201,14 @@ async function buildFromForm() {
       const data = await res.json()
       ganttData.value = data.gantt
     } else {
+      const mergedV2Config = sanitizeYSeriesConfig(chartKind.value, {
+        ...fieldConfig.value,
+        ...optionConfig.value,
+        title: chartTitle.value || undefined,
+      })
+
       const selectedFields = new Set<string>()
-      Object.values(fieldConfig.value).forEach(v => {
+      Object.values(mergedV2Config).forEach(v => {
         if (typeof v === 'string' && v) {
           selectedFields.add(v)
           return
@@ -174,12 +219,6 @@ async function buildFromForm() {
           })
         }
       })
-
-      const mergedV2Config = {
-        ...fieldConfig.value,
-        ...optionConfig.value,
-        title: chartTitle.value || undefined,
-      }
 
       const body = {
         chartKind: chartKind.value,
@@ -272,6 +311,7 @@ onMounted(fetchSchema)
             :headers="headers"
             :chart-kind="chartKind"
             :definitions="definitions"
+            :context-config="optionConfig"
             :field-errors="buildFieldErrors"
             v-model="fieldConfig"
           />

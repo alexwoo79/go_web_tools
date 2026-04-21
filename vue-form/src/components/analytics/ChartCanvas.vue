@@ -3,7 +3,7 @@ import { ref, watch, onMounted, onUnmounted } from 'vue'
 import * as echarts from 'echarts/core'
 import {
   BarChart, LineChart, PieChart, ScatterChart, RadarChart,
-  FunnelChart, GaugeChart, TreeChart, TreemapChart, SankeyChart, GraphChart
+  FunnelChart, GaugeChart, TreeChart, TreemapChart, SankeyChart, GraphChart, ChordChart
 } from 'echarts/charts'
 import {
   TitleComponent, TooltipComponent, GridComponent,
@@ -13,7 +13,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 echarts.use([
   BarChart, LineChart, PieChart, ScatterChart, RadarChart,
-  FunnelChart, GaugeChart, TreeChart, TreemapChart, SankeyChart, GraphChart,
+  FunnelChart, GaugeChart, TreeChart, TreemapChart, SankeyChart, GraphChart, ChordChart,
   TitleComponent, TooltipComponent, GridComponent,
   LegendComponent, DataZoomComponent,
   CanvasRenderer
@@ -151,19 +151,39 @@ function toEChartsOption(raw: Record<string, any> | null): Record<string, any> |
     }
   }
 
-  if (kind === 'graph' || kind === 'chord') {
+  if (kind === 'chord') {
+    return {
+      title,
+      tooltip: { trigger: 'item' },
+      legend: { type: 'scroll' },
+      series: [
+        {
+          type: 'chord',
+          coordinateSystem: 'none',
+          roam: true,
+          data: raw.nodes ?? [],
+          links: raw.links ?? [],
+          label: { show: true },
+          lineStyle: { opacity: 0.75, curveness: 0.5 },
+          emphasis: { focus: 'adjacency' },
+        },
+      ],
+    }
+  }
+
+  if (kind === 'graph') {
     return {
       title,
       tooltip: { trigger: 'item' },
       series: [
         {
           type: 'graph',
-          layout: kind === 'chord' ? 'circular' : 'force',
+          layout: 'force',
           roam: true,
           label: { show: true },
           data: raw.nodes ?? [],
           links: raw.links ?? [],
-          force: kind === 'chord' ? undefined : { repulsion: 120 },
+          force: { repulsion: 120 },
         },
       ],
     }

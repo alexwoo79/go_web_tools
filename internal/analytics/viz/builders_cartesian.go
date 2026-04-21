@@ -145,6 +145,7 @@ func init() {
 		{Key: "y2Col", Label: "Y2 字段", Description: "第 2 数值列", Type: "column", Aliases: []string{"y2Axis"}},
 		{Key: "y3Col", Label: "Y3 字段", Description: "第 3 数值列", Type: "column", Aliases: []string{"y3Axis"}},
 		{Key: "yExtraCols", Label: "扩展 Y 字段", Description: "第 4+ 数值列", Type: "column", Multi: true},
+		{Key: "yMetricCount", Label: "Y 数据数量", Description: "控制 Y2/Y3/扩展 Y 字段显示", Type: "select", Options: []string{"1", "2", "3", "4", "5", "6", "7", "8"}},
 		{Key: "subTitle", Label: "副标题", Type: "text"},
 		{Key: "seriesName", Label: "系列 1 名称", Type: "text"},
 		{Key: "series2Name", Label: "系列 2 名称", Type: "text"},

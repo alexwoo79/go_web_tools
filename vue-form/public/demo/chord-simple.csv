@@ -1,0 +1,9 @@
+Source,Target,LinkValue
+Europe,Asia,120
+Asia,Europe,95
+Europe,America,80
+America,Europe,70
+Asia,America,60
+America,Asia,65
+Asia,Africa,35
+Africa,Asia,28

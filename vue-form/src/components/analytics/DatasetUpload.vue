@@ -97,20 +97,7 @@ defineExpose({ reset })
         <span>✓ {{ uploaded.name }} ({{ uploaded.rowCount }} 行，{{ uploaded.headers.length }} 列)</span>
         <button class="btn-text" @click="reset">重新上传</button>
       </div>
-      <div class="preview-table-wrap">
-        <table class="preview-table">
-          <thead>
-            <tr>
-              <th v-for="h in uploaded.headers" :key="h">{{ h }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(row, i) in uploaded.preview" :key="i">
-              <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <p class="upload-note">数据预览已移动到右侧结果区上方，可展开查看。</p>
     </div>
   </div>
 </template>
@@ -168,26 +155,9 @@ defineExpose({ reset })
 }
 .btn-text:hover { text-decoration: underline; }
 
-.preview-table-wrap {
-  overflow-x: auto;
-  max-height: 180px;
-  overflow-y: auto;
-}
-.preview-table {
-  border-collapse: collapse;
+.upload-note {
+  margin: 0;
   font-size: 12px;
-  min-width: 100%;
-}
-.preview-table th, .preview-table td {
-  border: 1px solid #d9d9d9;
-  padding: 4px 8px;
-  white-space: nowrap;
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.preview-table th {
-  background: #fafafa;
-  font-weight: 600;
+  color: #5f6b7a;
 }
 </style>
