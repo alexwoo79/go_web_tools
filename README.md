@@ -21,14 +21,17 @@
 ### 安装依赖
 
 ```bash
-cd go-web
 go mod download
+cd vue-form && npm ci
 ```
 
-### 运行服务器
+### 推荐命令
 
 ```bash
-go run cmd/server/main.go
+make api      # 只跑 Go 后端
+make web      # 只跑 Vue 前端开发服务器
+make dev      # 构建内嵌前端并启动本地二进制
+make build    # 构建带内嵌前端的本机版本
 ```
 
 ### 访问应用
@@ -111,19 +114,75 @@ go-web/
 
 ## 🛠️ 开发
 
-### 构建项目
+### 最小操作
+
+前后端分离调试是默认推荐方式：
 
 ```bash
-go build -o bin/go-web ./cmd/server
+# 终端 1
+make api
+
+# 终端 2
+make web
 ```
 
-或使用一体化脚本（包含前端构建并支持 Windows 目标）：
+这种模式下前端走 Vite 开发服务器，`/api` 会自动代理到本地 Go 服务。
+
+如果需要按接近发布态的一体化方式验证：
+
+```bash
+make dev
+```
+
+这个命令会先执行前端构建，再把产物内嵌到 Go 二进制中启动，适合检查接近发布态的行为。
+
+### 构建项目
+
+推荐直接使用 Make：
+
+```bash
+make build
+make windows
+make all
+make package
+```
+
+底层仍然调用一体化脚本 [build.sh](/Users/crccredc/Documents/github/go_form_web-vue/build.sh)，它会先构建前端，再把产物同步到内嵌目录后编译 Go 二进制。
+
+如果你需要直接调用脚本，也可以使用：
 
 ```bash
 ./build.sh              # 构建本机版本
 ./build.sh windows      # 构建 Windows 版本（bin/go-web.exe）
 ./build.sh all          # 同时构建本机 + Windows
 ```
+
+### Docker 发布
+
+当前推荐方式是继续使用“前端内嵌到 Go 二进制”的单容器发布模式：
+
+```bash
+make docker-build
+make docker-up
+```
+
+这样容器里只需要：
+
+- 后端可执行文件
+- 配置文件
+- 数据目录挂载
+
+不需要额外维护单独的前端静态目录容器。
+
+### 补充说明
+
+如果只是临时验证 Go 服务本身，仍然可以直接运行：
+
+```bash
+go run ./cmd/server --config ./config.yaml
+```
+
+但日常开发和发布更建议统一使用 `make api`、`make web`、`make dev`、`make build` 这组入口。
 
 ### 运行测试
 

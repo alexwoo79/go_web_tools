@@ -19,6 +19,15 @@ go run cmd/server/main.go
 浏览器打开: http://localhost:8080
 ```
 
+推荐的最小命令入口：
+
+```bash
+make api      # 后端调试
+make web      # 前端调试
+make dev      # 一体化本地验证
+make build    # 构建内嵌前端的本机二进制
+```
+
 ## 使用说明
 
 ### 1. 配置表单
@@ -41,6 +50,22 @@ forms:
 
 ```bash
 go run cmd/server/main.go
+```
+
+如果前后端分离调试，使用：
+
+```bash
+# 终端 1
+make api
+
+# 终端 2
+make web
+```
+
+如果要按发布形态本地运行，使用：
+
+```bash
+make dev
 ```
 
 ### 3. 访问表单
@@ -66,6 +91,21 @@ go run cmd/generate/main.go -output generated
 
 ```bash
 go run cmd/server/main.go -port 9090
+```
+
+### 发布构建
+
+```bash
+make build
+make windows
+make all
+```
+
+### Docker 运行
+
+```bash
+make docker-build
+make docker-up
 ```
 
 ### 查看表单数据
