@@ -52,6 +52,7 @@ const dataset = ref<UploadedDataset | null>(null)
 const chartKind = ref('')
 const chartTitle = ref('')
 const fieldConfig = ref<Record<string, any>>({})
+const optionConfig = ref<Record<string, any>>({})
 const ganttConfig = ref<Record<string, string>>({})
 
 const building = ref(false)
@@ -119,10 +120,35 @@ onMounted(async () => {
 function onUploaded(payload: UploadedDataset) {
   dataset.value = payload
   fieldConfig.value = {}
+  optionConfig.value = {}
   ganttConfig.value = {}
   buildError.value = ''
   chartOption.value = null
   ganttData.value = null
+}
+
+function toLegacyConfig(v2: Record<string, any>): Record<string, string> {
+  const out: Record<string, string> = {}
+  const set = (k: string, v: any) => {
+    if (typeof v === 'string' && v.trim() !== '') out[k] = v
+  }
+  set('title', v2.title)
+  set('subTitle', v2.subTitle)
+  set('seriesName', v2.seriesName)
+  set('xAxis', v2.xCol)
+  set('yAxis', v2.yCol)
+  set('y2Axis', v2.y2Col)
+  set('y3Axis', v2.y3Col)
+  set('nameField', v2.nameCol)
+  set('valueField', v2.valueCol)
+  set('size', v2.sizeCol)
+  set('sourceCol', v2.sourceCol)
+  set('targetCol', v2.targetCol)
+  set('linkValueCol', v2.linkValueCol)
+  set('nodeIDCol', v2.nodeIDCol)
+  set('parentIDCol', v2.parentIDCol)
+  set('nodeValueCol', v2.nodeValueCol)
+  return out
 }
 
 async function build() {
@@ -144,16 +170,18 @@ async function build() {
       const data = await res.json()
       ganttData.value = data.gantt
     } else {
+      const mergedV2Config = {
+        ...fieldConfig.value,
+        ...optionConfig.value,
+        title: chartTitle.value || undefined,
+      }
       const body = {
         datasetId: dataset.value.id,
         chartKind: chartKind.value,
         schemaVersion: 2,
-        configV2: {
-          ...fieldConfig.value,
-          title: chartTitle.value || undefined,
-        },
+        configV2: mergedV2Config,
         // Keep legacy payload for backward compatibility during migration window.
-        config: { ...fieldConfig.value, title: chartTitle.value || undefined }
+        config: toLegacyConfig(mergedV2Config)
       }
       const res = await fetch('/api/admin/analytics/build', {
         method: 'POST',
@@ -183,6 +211,7 @@ function reset() {
   ganttData.value = null
   buildError.value = ''
   fieldConfig.value = {}
+  optionConfig.value = {}
   ganttConfig.value = {}
 }
 </script>
@@ -223,6 +252,7 @@ function reset() {
             :definitions="definitions"
             v-model="chartKind"
             v-model:title="chartTitle"
+            v-model:config="optionConfig"
           />
           <p v-else class="gantt-hint">甘特图将使用下方字段映射渲染任务时间线</p>
         </div>

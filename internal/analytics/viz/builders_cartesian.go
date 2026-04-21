@@ -145,6 +145,13 @@ func init() {
 		{Key: "y2Col", Label: "Y2 字段", Description: "第 2 数值列", Type: "column", Aliases: []string{"y2Axis"}},
 		{Key: "y3Col", Label: "Y3 字段", Description: "第 3 数值列", Type: "column", Aliases: []string{"y3Axis"}},
 		{Key: "yExtraCols", Label: "扩展 Y 字段", Description: "第 4+ 数值列", Type: "column", Multi: true},
+		{Key: "subTitle", Label: "副标题", Type: "text"},
+		{Key: "seriesName", Label: "系列 1 名称", Type: "text"},
+		{Key: "series2Name", Label: "系列 2 名称", Type: "text"},
+		{Key: "series3Name", Label: "系列 3 名称", Type: "text"},
+		{Key: "sortMode", Label: "排序", Type: "select", Options: []string{"none", "asc", "desc"}},
+		{Key: "smoothLine", Label: "平滑折线", Type: "boolean"},
+		{Key: "swapAxis", Label: "轴互换", Type: "boolean"},
 	}
 	register(model.ChartDefinition{
 		Kind: "bar", Label: "柱状图", Family: "基础分析",

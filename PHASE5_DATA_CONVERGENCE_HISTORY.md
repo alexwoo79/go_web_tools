@@ -24,10 +24,30 @@ Planned actions:
 6. Update workbench request payload to send V2 config.
 
 Acceptance checklist:
-- [ ] Backend compiles and passes analytics tests.
-- [ ] Frontend compiles with new mapper behavior.
-- [ ] Build API accepts V2 payload from workbench.
-- [ ] Legacy V1 payload remains accepted.
+- [x] Backend compiles and passes analytics tests.
+- [x] Frontend compiles with new mapper behavior.
+- [x] Build API accepts V2 payload from workbench.
+- [x] Legacy V1 payload remains accepted.
+
+### 2026-04-21 - Batch 2 (schema-driven options panel)
+Implemented changes:
+1. Split mapper responsibility:
+	- `FieldMapper` now renders only `column` fields.
+	- `ChartOptionsPanel` now renders non-column fields from definitions (`text/select/boolean/number`).
+2. Extended chart definition metadata in backend builders:
+	- Added option fields (`subTitle`, `seriesName*`, `sortMode`, `smoothLine`, `swapAxis`, `aggregateByName`, `gaugeMode`) by chart family.
+3. Updated workbench request assembly:
+	- Sends merged V2 config from mapping + options.
+	- Sends sanitized legacy config fallback to avoid mixed-type decode issues.
+4. Strengthened legacy parsing in build handler:
+	- Added bool parsing and CSV parsing (`yExtraCols`) for V1 compatibility.
+
+Verification:
+- Backend tests: `go test ./internal/analytics/...` passed.
+- Frontend build: `cd vue-form && npm run build` passed.
+
+Commit:
+- Pending (Batch 2 not committed yet in this entry).
 
 ## Notes
 This file is maintained as a historical record. Follow-up entries should append date, changes, verification results, and commit hash.

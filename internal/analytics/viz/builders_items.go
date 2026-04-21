@@ -145,6 +145,10 @@ func init() {
 	itemFields := []model.FieldDef{
 		{Key: "nameCol", Label: "名称字段", Description: "分类/标签列", Required: true, Type: "column", Aliases: []string{"nameField"}},
 		{Key: "valueCol", Label: "数值字段", Description: "主数值列", Required: true, Type: "column", Aliases: []string{"valueField"}},
+		{Key: "subTitle", Label: "副标题", Type: "text"},
+		{Key: "seriesName", Label: "系列名称", Type: "text"},
+		{Key: "aggregateByName", Label: "同名称聚合", Type: "boolean"},
+		{Key: "sortMode", Label: "排序", Type: "select", Options: []string{"none", "asc", "desc"}},
 	}
 	register(model.ChartDefinition{
 		Kind: "scatter", Label: "散点图", Family: "基础分析",
@@ -153,6 +157,8 @@ func init() {
 			{Key: "xCol", Label: "X 轴字段", Required: true, Type: "column", Aliases: []string{"xAxis"}},
 			{Key: "yCol", Label: "Y 轴字段", Required: true, Type: "column", Aliases: []string{"yAxis"}},
 			{Key: "sizeCol", Label: "气泡大小字段", Required: false, Type: "column", Aliases: []string{"size"}},
+			{Key: "subTitle", Label: "副标题", Type: "text"},
+			{Key: "seriesName", Label: "系列名称", Type: "text"},
 		},
 	}, buildScatter)
 	register(model.ChartDefinition{
@@ -176,6 +182,8 @@ func init() {
 		Fields: []model.FieldDef{
 			{Key: "valueCol", Label: "数值字段", Description: "用于聚合计算", Required: true, Type: "column", Aliases: []string{"valueField"}},
 			{Key: "gaugeMode", Label: "聚合方式", Description: "avg/first/max/min", Type: "select", Options: []string{"avg", "first", "max", "min"}},
+			{Key: "subTitle", Label: "副标题", Type: "text"},
+			{Key: "seriesName", Label: "系列名称", Type: "text"},
 		},
 	}, buildGauge)
 

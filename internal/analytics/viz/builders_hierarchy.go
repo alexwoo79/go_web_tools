@@ -152,6 +152,8 @@ func init() {
 		{Key: "parentIDCol", Label: "父节点字段", Required: true, Type: "column"},
 		{Key: "nameCol", Label: "显示名称字段", Required: false, Type: "column", Aliases: []string{"nameField"}},
 		{Key: "nodeValueCol", Label: "数值字段", Required: false, Type: "column"},
+		{Key: "subTitle", Label: "副标题", Type: "text"},
+		{Key: "seriesName", Label: "系列名称", Type: "text"},
 	}
 	register(model.ChartDefinition{
 		Kind: "tree", Label: "树图", Family: "层级结构",

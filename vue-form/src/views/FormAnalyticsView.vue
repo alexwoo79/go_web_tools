@@ -23,7 +23,12 @@ const GANTT_FIELDS = [
 interface FieldDef {
   key: string
   label: string
+  description?: string
   required?: boolean
+  multi?: boolean
+  type?: string
+  options?: string[]
+  aliases?: string[]
 }
 
 interface ChartDefinition {
@@ -56,7 +61,8 @@ const recommendedKinds = ref<string[]>([])
 
 const chartKind = ref('')
 const chartTitle = ref('')
-const fieldConfig = ref<Record<string, string>>({})
+const fieldConfig = ref<Record<string, any>>({})
+const optionConfig = ref<Record<string, any>>({})
 const ganttConfig = ref<Record<string, string>>({})
 const isGanttMode = ref(false)
 
@@ -78,6 +84,30 @@ const canBuild = computed(() => {
   const required = currentDef.value?.fields.filter(f => f.required) ?? []
   return required.every(f => fieldConfig.value[f.key])
 })
+
+function toLegacyConfig(v2: Record<string, any>): Record<string, string> {
+  const out: Record<string, string> = {}
+  const set = (k: string, v: any) => {
+    if (typeof v === 'string' && v.trim() !== '') out[k] = v
+  }
+  set('title', v2.title)
+  set('subTitle', v2.subTitle)
+  set('seriesName', v2.seriesName)
+  set('xAxis', v2.xCol)
+  set('yAxis', v2.yCol)
+  set('y2Axis', v2.y2Col)
+  set('y3Axis', v2.y3Col)
+  set('nameField', v2.nameCol)
+  set('valueField', v2.valueCol)
+  set('size', v2.sizeCol)
+  set('sourceCol', v2.sourceCol)
+  set('targetCol', v2.targetCol)
+  set('linkValueCol', v2.linkValueCol)
+  set('nodeIDCol', v2.nodeIDCol)
+  set('parentIDCol', v2.parentIDCol)
+  set('nodeValueCol', v2.nodeValueCol)
+  return out
+}
 
 async function fetchSchema() {
   loading.value = true
@@ -102,6 +132,7 @@ async function fetchSchema() {
     const firstRecommended = recommendedKinds.value.find(k => definitions.value.some(d => d.kind === k))
     chartKind.value = firstRecommended ?? definitions.value[0]?.kind ?? ''
     fieldConfig.value = {}
+    optionConfig.value = {}
     chartTitle.value = formTitle.value
   } catch (e: any) {
     error.value = e.message ?? '加载失败'
@@ -129,14 +160,27 @@ async function buildFromForm() {
       ganttData.value = data.gantt
     } else {
       const selectedFields = new Set<string>()
-      Object.values(fieldConfig.value).forEach(v => v && selectedFields.add(v))
+      Object.values(fieldConfig.value).forEach(v => {
+        if (typeof v === 'string' && v) {
+          selectedFields.add(v)
+          return
+        }
+        if (Array.isArray(v)) {
+          v.forEach(item => {
+            if (typeof item === 'string' && item) selectedFields.add(item)
+          })
+        }
+      })
+
+      const mergedV2Config = {
+        ...fieldConfig.value,
+        ...optionConfig.value,
+        title: chartTitle.value || undefined,
+      }
 
       const body = {
         chartKind: chartKind.value,
-        config: {
-          ...fieldConfig.value,
-          title: chartTitle.value || undefined
-        },
+        config: toLegacyConfig(mergedV2Config),
         fields: Array.from(selectedFields)
       }
 
@@ -195,6 +239,7 @@ onMounted(fetchSchema)
             :definitions="definitions"
             v-model="chartKind"
             v-model:title="chartTitle"
+            v-model:config="optionConfig"
           />
         </div>
 

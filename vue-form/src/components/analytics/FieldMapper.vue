@@ -7,6 +7,7 @@ interface FieldDef {
   description?: string
   required?: boolean
   multi?: boolean
+  type?: string
 }
 
 interface ChartDefinition {
@@ -32,7 +33,9 @@ const currentDef = computed(() =>
   props.definitions.find(d => d.kind === props.chartKind)
 )
 
-const fields = computed(() => currentDef.value?.fields ?? [])
+const fields = computed(() =>
+  (currentDef.value?.fields ?? []).filter(f => !f.type || f.type === 'column')
+)
 
 function onSelect(key: string, valueOrEvent: Event | string) {
   // Support both programmatic calls and DOM events

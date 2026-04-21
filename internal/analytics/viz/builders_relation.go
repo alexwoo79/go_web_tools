@@ -80,6 +80,8 @@ func init() {
 		{Key: "sourceCol", Label: "来源字段", Required: true, Type: "column"},
 		{Key: "targetCol", Label: "目标字段", Required: true, Type: "column"},
 		{Key: "linkValueCol", Label: "权重字段", Required: false, Type: "column"},
+		{Key: "subTitle", Label: "副标题", Type: "text"},
+		{Key: "seriesName", Label: "系列名称", Type: "text"},
 	}
 	register(model.ChartDefinition{
 		Kind: "sankey", Label: "桑基图", Family: "关系流向",

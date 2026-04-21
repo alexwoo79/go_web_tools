@@ -7,17 +7,26 @@ interface ChartDefinition {
   family: string
   description?: string
   hint?: string
+  fields?: Array<{
+    key: string
+    label: string
+    description?: string
+    type?: string
+    options?: string[]
+  }>
 }
 
 const props = defineProps<{
   definitions: ChartDefinition[]
   modelValue: string
   title: string
+  config: Record<string, any>
 }>()
 
 const emit = defineEmits<{
   (e: 'update:modelValue', kind: string): void
   (e: 'update:title', title: string): void
+  (e: 'update:config', config: Record<string, any>): void
 }>()
 
 const families = computed(() => {
@@ -30,6 +39,14 @@ const families = computed(() => {
 })
 
 const currentDef = computed(() => props.definitions.find(d => d.kind === props.modelValue))
+
+const optionFields = computed(() =>
+  (currentDef.value?.fields ?? []).filter(f => f.type && f.type !== 'column')
+)
+
+function updateConfig(key: string, value: any) {
+  emit('update:config', { ...props.config, [key]: value })
+}
 </script>
 
 <template>
@@ -63,6 +80,47 @@ const currentDef = computed(() => props.definitions.find(d => d.kind === props.m
         placeholder="（可选）"
         @input="emit('update:title', ($event.target as HTMLInputElement).value)"
       />
+    </div>
+
+    <div v-if="optionFields.length > 0" class="option-grid">
+      <div v-for="field in optionFields" :key="field.key" class="option-row">
+        <label class="opt-label">{{ field.label }}</label>
+
+        <select
+          v-if="field.type === 'select'"
+          class="title-input"
+          :value="config[field.key] ?? ''"
+          @change="updateConfig(field.key, ($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">（默认）</option>
+          <option v-for="opt in (field.options ?? [])" :key="opt" :value="opt">{{ opt }}</option>
+        </select>
+
+        <label v-else-if="field.type === 'boolean'" class="bool-row">
+          <input
+            type="checkbox"
+            :checked="!!config[field.key]"
+            @change="updateConfig(field.key, ($event.target as HTMLInputElement).checked)"
+          />
+          <span>启用</span>
+        </label>
+
+        <input
+          v-else-if="field.type === 'number'"
+          class="title-input"
+          type="number"
+          :value="config[field.key] ?? ''"
+          @input="updateConfig(field.key, Number(($event.target as HTMLInputElement).value || 0))"
+        />
+
+        <input
+          v-else
+          class="title-input"
+          type="text"
+          :value="config[field.key] ?? ''"
+          @input="updateConfig(field.key, ($event.target as HTMLInputElement).value)"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -121,6 +179,24 @@ const currentDef = computed(() => props.definitions.find(d => d.kind === props.m
   align-items: center;
   gap: 12px;
   margin-top: 16px;
+}
+.option-grid {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.bool-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #333;
+  font-size: 14px;
 }
 .opt-label {
   min-width: 70px;

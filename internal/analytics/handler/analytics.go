@@ -237,6 +237,24 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 		if cfg.SeriesName == "" {
 			cfg.SeriesName = req.Config["seriesName"]
 		}
+		if len(cfg.YExtraCols) == 0 {
+			cfg.YExtraCols = splitCSV(req.Config["yExtraCols"])
+		}
+		if cfg.SortMode == "" {
+			cfg.SortMode = req.Config["sortMode"]
+		}
+		if cfg.GaugeMode == "" {
+			cfg.GaugeMode = req.Config["gaugeMode"]
+		}
+		if !cfg.SmoothLine {
+			cfg.SmoothLine = parseBool(req.Config["smoothLine"])
+		}
+		if !cfg.SwapAxis {
+			cfg.SwapAxis = parseBool(req.Config["swapAxis"])
+		}
+		if !cfg.AggregateByName {
+			cfg.AggregateByName = parseBool(req.Config["aggregateByName"])
+		}
 	}
 
 	ownerID := ah.adminUserID(r)
@@ -537,6 +555,30 @@ func pickConfig(cfg map[string]string, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func splitCSV(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		v := strings.TrimSpace(p)
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func parseBool(s string) bool {
+	s = strings.TrimSpace(strings.ToLower(s))
+	return s == "1" || s == "true" || s == "on" || s == "yes"
 }
 
 func recommendChartKinds(fields []handler.FieldInfo) []string {
