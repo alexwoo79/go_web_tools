@@ -3,6 +3,12 @@ package model
 
 import "time"
 
+const (
+	// Validation error codes (stable contract for frontend localization).
+	ErrCodeRequiredField   = "ERR_REQUIRED_FIELD"
+	ErrCodeUnsupportedChart = "ERR_UNSUPPORTED_CHART"
+)
+
 // Dataset holds raw tabular data parsed from an uploaded file or a form query.
 type Dataset struct {
 	ID        string

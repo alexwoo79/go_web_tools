@@ -8,6 +8,7 @@ import ChartCanvas from '@/components/analytics/ChartCanvas.vue'
 import ChartToolbar from '@/components/analytics/ChartToolbar.vue'
 import GanttChart, { type GanttTask, type GanttStats } from '@/components/analytics/GanttChart.vue'
 import type { UploadedDataset } from '@/components/analytics/DatasetUpload.vue'
+import { localizeValidationIssue, type ValidationIssue } from '@/utils/analyticsErrorI18n'
 
 interface FieldDef {
   key: string
@@ -199,8 +200,10 @@ async function build() {
           msg = payload?.error || msg
           if (Array.isArray(payload?.details)) {
             const map: Record<string, string> = {}
-            for (const item of payload.details) {
-              if (item?.field && item?.message) map[item.field] = item.message
+            for (const item of payload.details as ValidationIssue[]) {
+              if (item?.field) {
+                map[item.field] = localizeValidationIssue(item, item.message || '配置有误')
+              }
             }
             buildFieldErrors.value = map
           }

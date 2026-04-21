@@ -6,6 +6,7 @@ import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
 import FieldMapper from '@/components/analytics/FieldMapper.vue'
 import ChartToolbar from '@/components/analytics/ChartToolbar.vue'
 import GanttChart, { type GanttTask, type GanttStats } from '@/components/analytics/GanttChart.vue'
+import { localizeValidationIssue, type ValidationIssue } from '@/utils/analyticsErrorI18n'
 
 const GANTT_FIELDS = [
   { key: 'taskCol', label: '任务名列', required: true },
@@ -146,7 +147,6 @@ async function buildFromForm() {
   building.value = true
   buildError.value = ''
   buildFieldErrors.value = {}
-  buildFieldErrors.value = {}
   chartOption.value = null
   ganttData.value = null
   try {
@@ -200,8 +200,10 @@ async function buildFromForm() {
           msg = payload?.error || msg
           if (Array.isArray(payload?.details)) {
             const map: Record<string, string> = {}
-            for (const item of payload.details) {
-              if (item?.field && item?.message) map[item.field] = item.message
+            for (const item of payload.details as ValidationIssue[]) {
+              if (item?.field) {
+                map[item.field] = localizeValidationIssue(item, item.message || '配置有误')
+              }
             }
             buildFieldErrors.value = map
           }

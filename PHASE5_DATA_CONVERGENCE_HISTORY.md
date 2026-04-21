@@ -67,5 +67,23 @@ Verification:
 Commit:
 - `de60154` - phase5: batch3 unified validation and field-level errors
 
+### 2026-04-21 - Batch 4 (错误码标准化 + i18n 映射 + 422 快照)
+Implemented changes:
+1. Backend error code standardization:
+	- Added stable validation error codes (`ERR_REQUIRED_FIELD`, `ERR_UNSUPPORTED_CHART`) in analytics model.
+	- Validation response details now use standardized `code` values as frontend contract keys.
+2. Frontend internationalization mapping:
+	- Added shared utility to map validation `code` to locale-aware text (zh/en).
+	- Workbench/Form analytics views now render field errors from `code` mapping, with server message fallback.
+3. 422 snapshot coverage:
+	- Added handler snapshot test to lock JSON payload shape and code values for config validation errors.
+
+Verification:
+- Backend tests: `go test ./internal/analytics/...` passed.
+- Frontend build: `cd vue-form && npm run build` passed.
+
+Commit:
+- Pending (Batch 4 not committed yet in this entry).
+
 ## Notes
 This file is maintained as a historical record. Follow-up entries should append date, changes, verification results, and commit hash.

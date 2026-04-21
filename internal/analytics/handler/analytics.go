@@ -607,7 +607,11 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 		}
 	}
 	if def == nil {
-		return []model.ValidationIssue{{Field: "chartKind", Code: "unsupported", Message: "不支持的图形类型"}}
+		return []model.ValidationIssue{{
+			Field:   "chartKind",
+			Code:    model.ErrCodeUnsupportedChart,
+			Message: "不支持的图形类型",
+		}}
 	}
 
 	issues := make([]model.ValidationIssue, 0)
@@ -625,7 +629,7 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 		seen[f.Key] = true
 		issues = append(issues, model.ValidationIssue{
 			Field:   f.Key,
-			Code:    "required",
+			Code:    model.ErrCodeRequiredField,
 			Message: f.Label + " 不能为空",
 		})
 	}

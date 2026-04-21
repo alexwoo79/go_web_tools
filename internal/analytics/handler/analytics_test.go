@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	analyticshandler "go-web/internal/analytics/handler"
@@ -67,5 +68,30 @@ func TestDefinitionsHandler_contentType(t *testing.T) {
 	ah.DefinitionsHandler(rr, req)
 	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
 		t.Fatalf("want application/json, got %q", ct)
+	}
+}
+
+func TestBuildHandler_validation422Snapshot(t *testing.T) {
+	ah := analyticshandler.New(nil)
+	body := map[string]any{
+		"datasetId":     "snapshot-ds",
+		"chartKind":     "bar",
+		"schemaVersion": 2,
+		"configV2":      map[string]any{},
+	}
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/analytics/build", bytes.NewReader(raw))
+	rr := httptest.NewRecorder()
+
+	ah.BuildHandler(rr, req)
+
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("want 422, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	got := strings.TrimSpace(rr.Body.String())
+	want := `{"error":"配置校验失败，请检查字段映射","details":[{"field":"xCol","code":"ERR_REQUIRED_FIELD","message":"X 轴字段 不能为空"},{"field":"yCol","code":"ERR_REQUIRED_FIELD","message":"Y 轴字段 不能为空"}]}`
+	if got != want {
+		t.Fatalf("422 snapshot mismatch\nwant: %s\ngot:  %s", want, got)
 	}
 }
