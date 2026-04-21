@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	maxUploadBytes = 10 << 20  // 10 MB
+	maxUploadBytes = 10 << 20 // 10 MB
 	maxRows        = 100_000
 	maxCols        = 200
 )

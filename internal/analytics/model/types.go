@@ -7,9 +7,9 @@ import "time"
 type Dataset struct {
 	ID        string
 	Name      string
-	Source    string    // "upload" | "form"
-	FormName  string    // populated when Source == "form"
-	OwnerID   int       // admin user id who created the dataset
+	Source    string // "upload" | "form"
+	FormName  string // populated when Source == "form"
+	OwnerID   int    // admin user id who created the dataset
 	Headers   []string
 	Rows      [][]string
 	CreatedAt time.Time
@@ -44,34 +44,34 @@ type Stats struct {
 
 // VizConfig stores the visualisation form selections for generic chart building.
 type VizConfig struct {
-	ChartKind    string
-	Title        string
-	SubTitle     string
-	Theme        string
-	SeriesName   string
-	Series2Name  string
-	Series3Name  string
-	YMetricCount int
-	XCol         string
-	YCol         string
-	Y2Col        string
-	Y3Col        string
-	YExtraCols   []string
-	NameCol      string
-	ValueCol     string
-	Value2Col    string
-	SizeCol      string
-	SwapAxis     bool
-	SmoothLine   bool
-	SortMode     string
+	ChartKind       string
+	Title           string
+	SubTitle        string
+	Theme           string
+	SeriesName      string
+	Series2Name     string
+	Series3Name     string
+	YMetricCount    int
+	XCol            string
+	YCol            string
+	Y2Col           string
+	Y3Col           string
+	YExtraCols      []string
+	NameCol         string
+	ValueCol        string
+	Value2Col       string
+	SizeCol         string
+	SwapAxis        bool
+	SmoothLine      bool
+	SortMode        string
 	AggregateByName bool
-	GaugeMode    string
-	SourceCol    string
-	TargetCol    string
-	LinkValueCol string
-	NodeIDCol    string
-	ParentIDCol  string
-	NodeValueCol string
+	GaugeMode       string
+	SourceCol       string
+	TargetCol       string
+	LinkValueCol    string
+	NodeIDCol       string
+	ParentIDCol     string
+	NodeValueCol    string
 }
 
 // GanttConfig holds the column mapping for Gantt chart building.
