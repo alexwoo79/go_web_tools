@@ -56,9 +56,6 @@ async function login() {
         </button>
       </form>
 
-      <p class="back-link">
-        <a href="/" @click.prevent="router.push('/')">← 返回首页</a>
-      </p>
       <p class="register-link">
         没有账号？
         <a href="/register" @click.prevent="router.push('/register')">去注册</a>
@@ -126,9 +123,6 @@ button {
 }
 button:hover:not(:disabled) { background: #3f58d6; }
 button:disabled { opacity: .6; cursor: not-allowed; }
-
-.back-link { text-align: center; margin-top: 1.2rem; font-size: .85rem; }
-.back-link a { color: #4b68f2; text-decoration: none; }
 
 .register-link {
   text-align: center;

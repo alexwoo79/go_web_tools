@@ -45,6 +45,8 @@ const GANTT_FIELDS = [
 ]
 
 const router = useRouter()
+const backPath = '/portal'
+const backLabel = '← 返回主页'
 
 const definitions = ref<ChartDefinition[]>([])
 const loadingDefs = ref(true)
@@ -486,7 +488,7 @@ function reset() {
   <div class="workbench">
     <header class="wb-header">
       <h1 class="wb-title">数据分析工作台</h1>
-      <button class="btn-back" @click="router.push('/admin')">← 返回管理后台</button>
+      <button class="btn-back" @click="router.push(backPath)">{{ backLabel }}</button>
     </header>
 
     <div v-if="loadingDefs" class="wb-loading">加载图表定义中…</div>
@@ -675,9 +677,9 @@ function reset() {
 .wb-error { color: var(--status-danger); }
 .wb-body { display: flex; flex: 1; gap: 20px; padding: 24px; align-items: flex-start; min-height: 0; max-width: 1360px; margin: 0 auto; width: 100%; }
 .wb-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
-.wb-section { background: transparent; border: 1px solid var(--surface-card-border); border-radius: 8px; padding: 16px; transition: opacity 0.2s; }
+.wb-section { background: linear-gradient(180deg, var(--surface-card-start) 0%, var(--surface-card-end) 100%); border: 1px solid var(--surface-card-border); border-radius: 8px; padding: 16px; transition: opacity 0.2s; }
 .wb-section.disabled { opacity: 0.45; pointer-events: none; }
-.wb-section.done { border-color: #b7eb8f; background: transparent; }
+.wb-section.done { border-color: #b7eb8f; }
 .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; font-weight: 600; color: var(--text-700); margin-bottom: 12px; }
 .section-head-left { display: flex; align-items: center; gap: 8px; }
 .step-badge { width: 22px; height: 22px; border-radius: 50%; background: var(--brand-600); color: #fff; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
