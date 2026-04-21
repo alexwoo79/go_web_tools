@@ -1,0 +1,8 @@
+NodeID,ParentID,Name,NodeValue
+company,,Company,0
+sales,company,Sales,40
+marketing,company,Marketing,32
+engineering,company,Engineering,55
+platform,engineering,Platform,21
+frontend,engineering,Frontend,18
+backend,engineering,Backend,16

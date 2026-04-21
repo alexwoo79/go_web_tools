@@ -77,6 +77,18 @@ const demoDatasetLoaded = ref(false)
 const activeDemoPresetKey = ref('')
 const selectedDemoPresetKey = ref('mixed')
 
+const demoButtonLabel = computed(() => {
+  if (demoLoading.value) return '加载中…'
+  return autoLoadDemo.value ? '重新加载自动样例' : '加载所选样例'
+})
+
+const demoHintText = computed(() => {
+  if (autoLoadDemo.value) {
+    return '自动模式已开启：切换图形会自动加载匹配样例；下拉仅供查看。'
+  }
+  return '手动模式：先选择样例类型，再点击「加载所选样例」。'
+})
+
 // When isGanttMode changes, set chartKind appropriately
 function toggleGanttMode(val: boolean) {
   isGanttMode.value = val
@@ -289,11 +301,14 @@ function onToggleAutoDemo() {
   }
 }
 
-async function onDemoPresetChange(nextPresetKey: string) {
+function onDemoPresetChange(nextPresetKey: string) {
   selectedDemoPresetKey.value = nextPresetKey
+}
+
+async function onLoadDemoClick() {
   if (autoLoadDemo.value) {
-    localStorage.setItem('analytics:autoDemoLoad', '0')
-    autoLoadDemo.value = false
+    await loadDemoDataset(chartKind.value)
+    return
   }
   await loadSelectedDemoDataset()
 }
@@ -480,15 +495,21 @@ function reset() {
               <input type="checkbox" v-model="autoLoadDemo" @change="onToggleAutoDemo" />
               自动加载测试数据
             </label>
-            <select class="demo-select" :value="selectedDemoPresetKey" @change="onDemoPresetChange(($event.target as HTMLSelectElement).value)">
+            <select
+              class="demo-select"
+              :value="selectedDemoPresetKey"
+              :disabled="autoLoadDemo"
+              @change="onDemoPresetChange(($event.target as HTMLSelectElement).value)"
+            >
               <option v-for="item in analyticsDemoOptions" :key="item.key" :value="item.key">
                 {{ item.label }}
               </option>
             </select>
-            <button class="btn-load-demo" :disabled="demoLoading" @click="() => loadDemoDataset()">
-              {{ demoLoading ? '加载中…' : '加载测试数据' }}
+            <button class="btn-load-demo" :disabled="demoLoading" @click="onLoadDemoClick">
+              {{ demoButtonLabel }}
             </button>
           </div>
+          <p class="demo-hint">{{ demoHintText }}</p>
           <p v-if="demoError" class="demo-error">{{ demoError }}</p>
           <DatasetUpload @uploaded="onUploaded" />
         </div>
@@ -698,6 +719,12 @@ function reset() {
   border-color: #1677ff;
   box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
 }
+.demo-select:disabled {
+  background: #f3f4f7;
+  color: #8c97a4;
+  border-color: #d8dde7;
+  cursor: not-allowed;
+}
 .btn-load-demo {
   border: 1px solid #1677ff;
   border-radius: 6px;
@@ -714,6 +741,11 @@ function reset() {
 .demo-error {
   margin: 0 0 8px;
   color: #d93025;
+  font-size: 12px;
+}
+.demo-hint {
+  margin: 0 0 8px;
+  color: #5d6b7b;
   font-size: 12px;
 }
 .gantt-toggle { margin-bottom: 10px; font-size: 14px; color: #333; }
