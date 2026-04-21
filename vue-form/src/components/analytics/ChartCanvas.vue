@@ -48,10 +48,10 @@ function buildDataViewTable(option: any): string {
     <style>
       .dv-wrap{padding:12px 16px;font-family:sans-serif;font-size:13px;color:#1a1a2e}
       .dv-table{border-collapse:collapse;width:100%;min-width:300px}
-      .dv-table th{background:#f0f4ff;color:#374151;font-weight:600;padding:7px 10px;border:1px solid #dce3f0;text-align:left;white-space:nowrap}
-      .dv-table td{padding:6px 10px;border:1px solid #e8ecf5;vertical-align:top}
-      .dv-table tr:nth-child(even) td{background:#f8faff}
-      .dv-table tr:hover td{background:#eef3ff}
+      .dv-table th{background:#eef3ff;color:#334155;font-weight:600;padding:7px 10px;border:1px solid #cfd8ea;text-align:left;white-space:nowrap}
+      .dv-table td{padding:6px 10px;border:1px solid #d9e2f2;vertical-align:top;background:#ffffff}
+      .dv-table tr:nth-child(even) td{background:#f7faff}
+      .dv-table tr:hover td{background:#eaf1ff}
     </style>`
 
   try {

@@ -137,6 +137,34 @@ function formatTimelineLabel(ts: number, gran: string) {
   return `${y}-${m}`
 }
 
+function buildGanttDataViewTable(rows: any[]): string {
+  const esc = (v: any) => String(v == null ? '' : v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const style = `
+    <style>
+      .dv-wrap{padding:12px 16px;font-family:sans-serif;font-size:13px;color:#1a1a2e}
+      .dv-table{border-collapse:collapse;width:100%;min-width:640px}
+      .dv-table th{background:#eef3ff;color:#334155;font-weight:600;padding:7px 10px;border:1px solid #cfd8ea;text-align:left;white-space:nowrap}
+      .dv-table td{padding:6px 10px;border:1px solid #d9e2f2;vertical-align:top;background:#ffffff}
+      .dv-table tr:nth-child(even) td{background:#f7faff}
+      .dv-table tr:hover td{background:#eaf1ff}
+    </style>`
+  const fmt = (ts: any) => {
+    const n = Number(ts)
+    if (!Number.isFinite(n)) return ''
+    return new Date(n).toLocaleDateString()
+  }
+
+  const body = rows
+    .filter(r => r.rowType === 'task')
+    .map(r => `<tr><td>${esc(r.project)}</td><td>${esc(r.task)}</td><td>${esc(fmt(r.start))}</td><td>${esc(fmt(r.end))}</td><td>${esc(r.duration)}</td><td>${esc(r.description || '')}</td></tr>`)
+    .join('')
+
+  return `${style}<div class="dv-wrap"><table class="dv-table"><thead><tr><th>项目</th><th>任务</th><th>开始</th><th>结束</th><th>周期(天)</th><th>描述</th></tr></thead><tbody>${body}</tbody></table></div>`
+}
+
 // ── bar geometry helpers (matches reference) ──────────────────
 function barHeightForRow(rowType: string) {
   return rowType === 'project' ? 36 : 24
@@ -477,7 +505,12 @@ function buildOption(tasks: GanttTask[], themeName?: string, opts?: GanttOptions
       feature: {
         dataZoom: { yAxisIndex: 'none', title: { zoom: '区域缩放', back: '缩放还原' } },
         restore: { title: '还原' },
-        dataView: { title: '数据视图', lang: ['数据视图', '关闭', '刷新'], readOnly: true },
+        dataView: {
+          title: '数据视图',
+          lang: ['数据视图', '关闭', '刷新'],
+          readOnly: true,
+          optionToContent: () => buildGanttDataViewTable(rows),
+        },
         saveAsImage: { title: '下载 PNG', name: 'gantt', pixelRatio: 2, backgroundColor: canvasBg }
       }
     },

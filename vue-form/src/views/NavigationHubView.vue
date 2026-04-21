@@ -46,7 +46,7 @@ async function logout() {
 <style scoped>
 .hub-page {
   min-height: 100vh;
-  background: #f5f6fa;
+  background: transparent;
   padding: 24px;
   box-sizing: border-box;
 }

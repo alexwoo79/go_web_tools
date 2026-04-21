@@ -389,7 +389,7 @@ onMounted(fetchSchema)
 <style scoped>
 .form-analytics-page {
   height: 100vh;
-  background: #f6f8fb;
+  background: transparent;
   padding: 20px;
   box-sizing: border-box;
   display: flex;
@@ -408,11 +408,12 @@ onMounted(fetchSchema)
 .fa-header h1 {
   margin: 0;
   font-size: 22px;
+  color: var(--text-900);
 }
 
 .fa-sub {
   margin: 6px 0 0;
-  color: #666;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -422,8 +423,9 @@ onMounted(fetchSchema)
 }
 
 .btn-back {
-  border: 1px solid #d9d9d9;
-  background: #fff;
+  border: 1px solid var(--surface-card-border);
+  background: var(--bg-elevated);
+  color: var(--text-700);
   border-radius: 8px;
   padding: 8px 14px;
   cursor: pointer;
@@ -431,12 +433,12 @@ onMounted(fetchSchema)
 
 .state {
   text-align: center;
-  color: #666;
+  color: var(--text-muted);
   margin-top: 50px;
 }
 
 .state.error {
-  color: #d33;
+  color: var(--status-danger);
 }
 
 .fa-body {
@@ -456,8 +458,8 @@ onMounted(fetchSchema)
 }
 
 .panel {
-  background: #fff;
-  border: 1px solid #e7e9ef;
+  background: linear-gradient(180deg, var(--surface-card-start) 0%, var(--surface-card-end) 100%);
+  border: 1px solid var(--surface-card-border);
   border-radius: 12px;
   padding: 14px;
 }
@@ -465,6 +467,7 @@ onMounted(fetchSchema)
 .panel h3 {
   margin: 0 0 10px;
   font-size: 15px;
+  color: var(--text-700);
 }
 
 .actions {
@@ -475,7 +478,7 @@ onMounted(fetchSchema)
 .btn-build {
   flex: 1;
   border: none;
-  background: #1777ff;
+  background: var(--brand-600);
   color: #fff;
   border-radius: 8px;
   padding: 10px;
@@ -498,14 +501,14 @@ onMounted(fetchSchema)
 }
 
 .error-text {
-  color: #d4380d;
+  color: var(--status-danger);
   margin: 0 0 10px;
   font-size: 13px;
 }
 
 .fa-right {
-  background: #fff;
-  border: 1px solid #e7e9ef;
+  background: linear-gradient(180deg, var(--surface-card-start) 0%, var(--surface-card-end) 100%);
+  border: 1px solid var(--surface-card-border);
   border-radius: 12px;
   overflow: hidden;
   display: flex;
@@ -515,7 +518,7 @@ onMounted(fetchSchema)
 
 .placeholder {
   text-align: center;
-  color: #9aa2b1;
+  color: var(--text-muted);
   padding: 60px 20px;
   flex: 1;
   display: flex;
@@ -527,7 +530,7 @@ onMounted(fetchSchema)
   display: block;
   margin-bottom: 10px;
   font-size: 14px;
-  color: #333;
+  color: var(--text-700);
   cursor: pointer;
 }
 .gantt-field-mapper {
@@ -535,7 +538,7 @@ onMounted(fetchSchema)
   flex-direction: column;
   gap: 8px;
 }
-.gantt-opts-divider { font-size: 12px; color: #888; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb; }
+.gantt-opts-divider { font-size: 12px; color: var(--text-muted); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--surface-card-border); }
 .gantt-opt-row { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; user-select: none; }
 .gantt-field-row {
   display: flex;
@@ -545,16 +548,18 @@ onMounted(fetchSchema)
 .gf-label {
   width: 90px;
   font-size: 13px;
-  color: #333;
+  color: var(--text-700);
   flex-shrink: 0;
 }
 .req { color: #e53e3e; }
 .gf-select {
   flex: 1;
   padding: 4px 8px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--surface-card-border);
   border-radius: 4px;
   font-size: 13px;
+  background: var(--bg-elevated);
+  color: var(--text-700);
 }
 
 @media (max-width: 980px) {
