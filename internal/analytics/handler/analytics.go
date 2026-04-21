@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"go-web/internal/analytics/dataset"
+	"go-web/internal/analytics/gantt"
 	"go-web/internal/analytics/model"
 	"go-web/internal/analytics/service"
 	"go-web/internal/analytics/viz"
@@ -352,6 +353,90 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 			"headers":  ds.Headers,
 		},
 	})
+}
+
+// ganttBuildRequest is the JSON body for the gantt build endpoints.
+type ganttBuildRequest struct {
+	DatasetID string           `json:"datasetId"`
+	Config    model.GanttConfig `json:"config"`
+}
+
+// BuildGanttHandler handles POST /api/admin/analytics/gantt/build
+func (ah *AnalyticsHandler) BuildGanttHandler(w http.ResponseWriter, r *http.Request) {
+	var req ganttBuildRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求解析失败"})
+		return
+	}
+	if strings.TrimSpace(req.DatasetID) == "" {
+		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "缺少 datasetId"})
+		return
+	}
+
+	ds, ok := dataset.Load(req.DatasetID)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "dataset 不存在"})
+		return
+	}
+
+	result, err := gantt.Build(ds, req.Config)
+	if err != nil {
+		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+
+	jsonResp(w, http.StatusOK, map[string]any{"gantt": result})
+}
+
+// BuildFormGanttHandler handles POST /api/admin/analytics/forms/{formName}/gantt/build
+func (ah *AnalyticsHandler) BuildFormGanttHandler(w http.ResponseWriter, r *http.Request) {
+	formName := mux.Vars(r)["formName"]
+	fi, ok := ah.primary.GetFormForAnalytics(formName)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "表单不存在"})
+		return
+	}
+
+	var req struct {
+		Config model.GanttConfig `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求解析失败"})
+		return
+	}
+
+	tableName := fi.Model.TableName
+	if tableName == "" {
+		tableName = "form_" + fi.Name
+	}
+
+	// Collect the columns we need from the gantt config
+	ganttCols := []string{}
+	for _, col := range []string{
+		req.Config.TaskCol, req.Config.StartCol, req.Config.EndCol,
+		req.Config.ProjectCol, req.Config.ColorCol, req.Config.DescCol,
+		req.Config.MilestoneCol, req.Config.MilestoneDateCol,
+		req.Config.PlanStartCol, req.Config.PlanEndCol, req.Config.OwnerCol,
+	} {
+		if col != "" {
+			ganttCols = append(ganttCols, col)
+		}
+	}
+
+	ownerID := ah.adminUserID(r)
+	ds, err := service.FromFormData(ah.primary.DBForAnalytics(), tableName, fi.Name, ownerID, ganttCols)
+	if err != nil {
+		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+
+	result, err := gantt.Build(ds, req.Config)
+	if err != nil {
+		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+
+	jsonResp(w, http.StatusOK, map[string]any{"gantt": result})
 }
 
 // ---- helpers ----------------------------------------------------------------

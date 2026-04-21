@@ -131,6 +131,8 @@ func NewRouter(h *handler.Handler, ah *analyticshandler.AnalyticsHandler) *mux.R
 	r.HandleFunc("/api/admin/analytics/validate-hierarchy", ah.RequireAdmin(ah.ValidateHierarchyHandler)).Methods("POST")
 	r.HandleFunc("/api/admin/analytics/forms/{formName}/schema", ah.RequireAdmin(ah.GetFormSchemaHandler)).Methods("GET")
 	r.HandleFunc("/api/admin/analytics/forms/{formName}/build", ah.RequireAdmin(ah.BuildFromFormHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/analytics/gantt/build", ah.RequireAdmin(ah.BuildGanttHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/analytics/forms/{formName}/gantt/build", ah.RequireAdmin(ah.BuildFormGanttHandler)).Methods("POST")
 
 	// 所有其他路由由 Vue SPA 处理
 	r.PathPrefix("/").Handler(spa)

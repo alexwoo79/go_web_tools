@@ -36,7 +36,27 @@ function exportPNG() {
   a.download = 'chart.png'
   a.click()
 }
-defineExpose({ exportPNG })
+
+function exportJSON() {
+  if (!props.option) return
+  const json = JSON.stringify(props.option, null, 2)
+  navigator.clipboard.writeText(json).catch(() => {
+    const ta = document.createElement('textarea')
+    ta.value = json
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+  })
+}
+
+function enterFullscreen() {
+  const el = chartEl.value?.closest('.chart-canvas-wrap') as HTMLElement | null ?? chartEl.value
+  if (!el) return
+  if (el.requestFullscreen) el.requestFullscreen()
+}
+
+defineExpose({ exportPNG, exportJSON, enterFullscreen })
 
 onMounted(() => {
   if (!chartEl.value) return

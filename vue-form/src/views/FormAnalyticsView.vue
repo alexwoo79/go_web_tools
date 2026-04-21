@@ -4,6 +4,21 @@ import { useRoute, useRouter } from 'vue-router'
 import ChartCanvas from '@/components/analytics/ChartCanvas.vue'
 import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
 import FieldMapper from '@/components/analytics/FieldMapper.vue'
+import ChartToolbar from '@/components/analytics/ChartToolbar.vue'
+import GanttChart, { type GanttTask, type GanttStats } from '@/components/analytics/GanttChart.vue'
+
+const GANTT_FIELDS = [
+  { key: 'taskCol', label: '任务名列', required: true },
+  { key: 'startCol', label: '开始日期列', required: true },
+  { key: 'endCol', label: '结束日期列', required: true },
+  { key: 'projectCol', label: '项目/分组列', required: false },
+  { key: 'ownerCol', label: '负责人列', required: false },
+  { key: 'descCol', label: '描述列', required: false },
+  { key: 'planStartCol', label: '计划开始列', required: false },
+  { key: 'planEndCol', label: '计划结束列', required: false },
+  { key: 'milestoneCol', label: '里程碑名列', required: false },
+  { key: 'milestoneDateCol', label: '里程碑日期列', required: false },
+]
 
 interface FieldDef {
   key: string
@@ -42,17 +57,24 @@ const recommendedKinds = ref<string[]>([])
 const chartKind = ref('')
 const chartTitle = ref('')
 const fieldConfig = ref<Record<string, string>>({})
+const ganttConfig = ref<Record<string, string>>({})
+const isGanttMode = ref(false)
 
 const building = ref(false)
 const buildError = ref('')
 const chartOption = ref<Record<string, any> | null>(null)
+const ganttData = ref<{ tasks: GanttTask[]; stats: GanttStats } | null>(null)
 const chartRef = ref<InstanceType<typeof ChartCanvas>>()
+const ganttRef = ref<InstanceType<typeof GanttChart>>()
 
 const formName = computed(() => String(route.params.formName ?? ''))
 
 const currentDef = computed(() => definitions.value.find(d => d.kind === chartKind.value))
 const canBuild = computed(() => {
-  if (!chartKind.value) return false
+  if (!chartKind.value && !isGanttMode.value) return false
+  if (isGanttMode.value) {
+    return !!(ganttConfig.value['taskCol'] && ganttConfig.value['startCol'] && ganttConfig.value['endCol'])
+  }
   const required = currentDef.value?.fields.filter(f => f.required) ?? []
   return required.every(f => fieldConfig.value[f.key])
 })
@@ -92,31 +114,42 @@ async function buildFromForm() {
   building.value = true
   buildError.value = ''
   chartOption.value = null
+  ganttData.value = null
   try {
-    const selectedFields = new Set<string>()
-    Object.values(fieldConfig.value).forEach(v => v && selectedFields.add(v))
+    if (isGanttMode.value) {
+      const body = { config: ganttConfig.value, fields: [] as string[] }
+      const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/gantt/build`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      if (!res.ok) throw new Error((await res.text()) || `构建失败 (${res.status})`)
+      const data = await res.json()
+      ganttData.value = data.gantt
+    } else {
+      const selectedFields = new Set<string>()
+      Object.values(fieldConfig.value).forEach(v => v && selectedFields.add(v))
 
-    const body = {
-      chartKind: chartKind.value,
-      config: {
-        ...fieldConfig.value,
-        title: chartTitle.value || undefined
-      },
-      fields: Array.from(selectedFields)
-    }
+      const body = {
+        chartKind: chartKind.value,
+        config: {
+          ...fieldConfig.value,
+          title: chartTitle.value || undefined
+        },
+        fields: Array.from(selectedFields)
+      }
 
-    const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/build`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-    if (!res.ok) {
-      const msg = await res.text()
-      throw new Error(msg || `构建失败 (${res.status})`)
+      const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/build`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      if (!res.ok) throw new Error((await res.text()) || `构建失败 (${res.status})`)
+      const data = await res.json()
+      chartOption.value = data.option
     }
-    const data = await res.json()
-    chartOption.value = data.option
   } catch (e: any) {
     buildError.value = e.message ?? '构建失败'
   } finally {
@@ -125,7 +158,8 @@ async function buildFromForm() {
 }
 
 function exportPNG() {
-  chartRef.value?.exportPNG()
+  if (isGanttMode.value) ganttRef.value?.exportPNG()
+  else chartRef.value?.exportPNG()
 }
 
 watch(() => route.params.formName, fetchSchema)
@@ -152,7 +186,12 @@ onMounted(fetchSchema)
       <section class="fa-left">
         <div class="panel">
           <h3>图表配置</h3>
+          <label class="gantt-toggle">
+            <input type="checkbox" v-model="isGanttMode" @change="() => { chartOption = null; ganttData = null }" />
+            &nbsp;甘特图模式
+          </label>
           <ChartOptionsPanel
+            v-if="!isGanttMode"
             :definitions="definitions"
             v-model="chartKind"
             v-model:title="chartTitle"
@@ -162,11 +201,21 @@ onMounted(fetchSchema)
         <div class="panel">
           <h3>字段映射</h3>
           <FieldMapper
+            v-if="!isGanttMode"
             :headers="headers"
             :chart-kind="chartKind"
             :definitions="definitions"
             v-model="fieldConfig"
           />
+          <div v-else class="gantt-field-mapper">
+            <div v-for="f in GANTT_FIELDS" :key="f.key" class="gantt-field-row">
+              <label class="gf-label">{{ f.label }}<span v-if="f.required" class="req">*</span></label>
+              <select class="gf-select" v-model="ganttConfig[f.key]">
+                <option value="">— 不映射 —</option>
+                <option v-for="h in headers" :key="h" :value="h">{{ h }}</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div class="panel">
@@ -175,19 +224,30 @@ onMounted(fetchSchema)
             <button class="btn-build" :disabled="building || !canBuild" @click="buildFromForm">
               {{ building ? '生成中…' : '生成图表' }}
             </button>
-            <button v-if="chartOption" class="btn-export" @click="exportPNG">导出 PNG</button>
+            <button v-if="chartOption || ganttData" class="btn-export" @click="exportPNG">导出 PNG</button>
           </div>
         </div>
       </section>
 
       <section class="fa-right">
-        <div v-if="!chartOption && !building" class="placeholder">选择映射后点击「生成图表」</div>
-        <ChartCanvas
+        <div v-if="!chartOption && !ganttData && !building" class="placeholder">选择映射后点击「生成图表」</div>
+        <ChartToolbar
           v-else
-          ref="chartRef"
-          :option="chartOption"
-          :loading="building"
-        />
+          :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
+        >
+          <GanttChart
+            v-if="isGanttMode && ganttData"
+            ref="ganttRef"
+            :tasks="ganttData.tasks"
+            :stats="ganttData.stats"
+          />
+          <ChartCanvas
+            v-else-if="!isGanttMode"
+            ref="chartRef"
+            :option="chartOption"
+            :loading="building"
+          />
+        </ChartToolbar>
       </section>
     </div>
   </div>
@@ -314,6 +374,38 @@ onMounted(fetchSchema)
   text-align: center;
   color: #9aa2b1;
   margin-top: 180px;
+}
+
+.gantt-toggle {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+}
+.gantt-field-mapper {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gantt-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gf-label {
+  width: 90px;
+  font-size: 13px;
+  color: #333;
+  flex-shrink: 0;
+}
+.req { color: #e53e3e; }
+.gf-select {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 13px;
 }
 
 @media (max-width: 980px) {
