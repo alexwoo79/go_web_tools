@@ -8,6 +8,7 @@ import MySubmissionsView from '../views/MySubmissionsView.vue'
 import ChangePasswordView from '../views/ChangePasswordView.vue'
 import UserManagementView from '../views/UserManagementView.vue'
 import AnalyticsWorkbenchView from '../views/AnalyticsWorkbenchView.vue'
+import FormAnalyticsView from '../views/FormAnalyticsView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
@@ -57,6 +58,12 @@ const router = createRouter({
       name: 'admin-analytics',
       component: AnalyticsWorkbenchView,
       meta: { requiresAuth: true, requiresAdmin: true, title: '数据分析工作台' },
+    },
+    {
+      path: '/admin/analytics/forms/:formName',
+      name: 'admin-analytics-form',
+      component: FormAnalyticsView,
+      meta: { requiresAuth: true, requiresAdmin: true, title: '表单数据分析' },
     },
   ],
 })

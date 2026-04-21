@@ -4,6 +4,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -218,7 +219,188 @@ func (ah *AnalyticsHandler) ValidateHierarchyHandler(w http.ResponseWriter, r *h
 	jsonResp(w, http.StatusOK, result)
 }
 
+// GetFormSchemaHandler handles GET /api/admin/analytics/forms/{formName}/schema
+func (ah *AnalyticsHandler) GetFormSchemaHandler(w http.ResponseWriter, r *http.Request) {
+	formName := mux.Vars(r)["formName"]
+	fi, ok := ah.primary.GetFormForAnalytics(formName)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "表单不存在"})
+		return
+	}
+
+	tableName := fi.Model.TableName
+	if tableName == "" {
+		tableName = "form_" + fi.Name
+	}
+
+	db := ah.primary.DBForAnalytics()
+	if !db.TableExists(tableName) {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "该表单暂无数据"})
+		return
+	}
+
+	fields := make([]map[string]any, 0, len(fi.Fields)+3)
+	headers := make([]string, 0, len(fi.Fields)+3)
+	for _, f := range fi.Fields {
+		headers = append(headers, f.Name)
+		fields = append(fields, map[string]any{
+			"name":     f.Name,
+			"label":    f.Label,
+			"type":     normalizeFieldType(f.Type),
+			"required": f.Required,
+			"system":   false,
+		})
+	}
+
+	for _, sf := range []struct {
+		name  string
+		label string
+		typ   string
+	}{
+		{name: "_submitted_at", label: "提交时间", typ: "date"},
+		{name: "_ip", label: "IP", typ: "text"},
+		{name: "owner_user_id", label: "提交用户ID", typ: "number"},
+	} {
+		headers = append(headers, sf.name)
+		fields = append(fields, map[string]any{
+			"name":     sf.name,
+			"label":    sf.label,
+			"type":     sf.typ,
+			"required": false,
+			"system":   true,
+		})
+	}
+
+	jsonResp(w, http.StatusOK, map[string]any{
+		"formName":          fi.Name,
+		"formTitle":         fi.Title,
+		"tableName":         tableName,
+		"headers":           headers,
+		"fields":            fields,
+		"definitions":       viz.Definitions(),
+		"recommendedCharts": recommendChartKinds(fi.Fields),
+	})
+}
+
+// BuildFromFormHandler handles POST /api/admin/analytics/forms/{formName}/build
+func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.Request) {
+	formName := mux.Vars(r)["formName"]
+	fi, ok := ah.primary.GetFormForAnalytics(formName)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "表单不存在"})
+		return
+	}
+
+	var req struct {
+		ChartKind string            `json:"chartKind"`
+		Config    map[string]string `json:"config"`
+		Fields    []string          `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败"})
+		return
+	}
+	if req.ChartKind == "" {
+		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "chartKind 不能为空"})
+		return
+	}
+
+	tableName := fi.Model.TableName
+	if tableName == "" {
+		tableName = "form_" + fi.Name
+	}
+
+	requiredFields := append(req.Fields, configFields(req.Config)...)
+	ownerID := ah.adminUserID(r)
+	ds, err := service.FromFormData(ah.primary.DBForAnalytics(), tableName, fi.Name, ownerID, requiredFields)
+	if err != nil {
+		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+
+	cfg := model.VizConfig{
+		ChartKind:    req.ChartKind,
+		Title:        req.Config["title"],
+		SubTitle:     req.Config["subTitle"],
+		XCol:         req.Config["xAxis"],
+		YCol:         req.Config["yAxis"],
+		Y2Col:        req.Config["y2Axis"],
+		Y3Col:        req.Config["y3Axis"],
+		NameCol:      req.Config["nameField"],
+		ValueCol:     req.Config["valueField"],
+		SizeCol:      req.Config["size"],
+		SourceCol:    req.Config["sourceCol"],
+		TargetCol:    req.Config["targetCol"],
+		LinkValueCol: req.Config["linkValueCol"],
+		NodeIDCol:    req.Config["nodeIDCol"],
+		ParentIDCol:  req.Config["parentIDCol"],
+		NodeValueCol: req.Config["nodeValueCol"],
+		SeriesName:   req.Config["seriesName"],
+	}
+
+	option, err := service.BuildChart(ds.ID, ownerID, cfg)
+	if err != nil {
+		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+
+	jsonResp(w, http.StatusOK, map[string]any{
+		"option": option,
+		"dataset": map[string]any{
+			"id":       ds.ID,
+			"rowCount": len(ds.Rows),
+			"headers":  ds.Headers,
+		},
+	})
+}
+
 // ---- helpers ----------------------------------------------------------------
+
+func normalizeFieldType(t string) string {
+	t = strings.ToLower(strings.TrimSpace(t))
+	switch t {
+	case "number", "range":
+		return "number"
+	case "date", "time", "datetime":
+		return "date"
+	default:
+		return "text"
+	}
+}
+
+func configFields(cfg map[string]string) []string {
+	out := make([]string, 0, len(cfg))
+	for k, v := range cfg {
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+		switch k {
+		case "xAxis", "yAxis", "y2Axis", "y3Axis", "nameField", "valueField", "size", "sourceCol", "targetCol", "linkValueCol", "nodeIDCol", "parentIDCol", "nodeValueCol":
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func recommendChartKinds(fields []handler.FieldInfo) []string {
+	numeric := 0
+	textual := 0
+	for _, f := range fields {
+		t := normalizeFieldType(f.Type)
+		if t == "number" {
+			numeric++
+		} else {
+			textual++
+		}
+	}
+	if numeric == 0 {
+		return []string{"pie", "donut", "funnel"}
+	}
+	if textual == 0 {
+		return []string{"line", "area", "bar"}
+	}
+	return []string{"bar", "line", "pie", "scatter", "radar"}
+}
 
 func jsonResp(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")

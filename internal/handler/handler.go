@@ -287,6 +287,16 @@ func (h *Handler) SessionUserID(sessionID string) int {
 	return s.UserID
 }
 
+// GetFormForAnalytics exposes form config to analytics sub-handlers.
+func (h *Handler) GetFormForAnalytics(name string) (FormInfo, bool) {
+	return h.getForm(name)
+}
+
+// DBForAnalytics exposes database access to analytics sub-handlers.
+func (h *Handler) DBForAnalytics() *models.Database {
+	return h.db
+}
+
 // convertToModelsField 将 handler.FieldInfo 转换为 models.FieldInfo
 func convertToModelsField(fi FieldInfo) models.FieldInfo {
 	return models.FieldInfo{

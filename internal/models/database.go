@@ -403,6 +403,69 @@ func (d *Database) Query(tableName string, where string, args ...interface{}) ([
 	return results, rows.Err()
 }
 
+// TableColumns returns all column names for a table.
+func (d *Database) TableColumns(tableName string) []string {
+	return d.getTableColumns(tableName)
+}
+
+// QueryRowsLimited queries selected columns with a hard row limit.
+func (d *Database) QueryRowsLimited(tableName string, columns []string, limit int) ([]map[string]interface{}, error) {
+	if limit <= 0 {
+		limit = 10000
+	}
+
+	selected := "*"
+	if len(columns) > 0 {
+		safeCols := make([]string, 0, len(columns))
+		for _, c := range columns {
+			trimmed := strings.TrimSpace(c)
+			if trimmed == "" {
+				continue
+			}
+			safeCols = append(safeCols, fmt.Sprintf("`%s`", strings.ReplaceAll(trimmed, "`", "")))
+		}
+		if len(safeCols) > 0 {
+			selected = strings.Join(safeCols, ", ")
+		}
+	}
+
+	query := fmt.Sprintf("SELECT %s FROM `%s` ORDER BY id DESC LIMIT ?", selected, strings.ReplaceAll(tableName, "`", ""))
+	rows, err := d.db.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]map[string]interface{}, 0)
+	for rows.Next() {
+		values := make([]interface{}, len(cols))
+		ptrs := make([]interface{}, len(cols))
+		for i := range cols {
+			ptrs[i] = &values[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+
+		m := make(map[string]interface{}, len(cols))
+		for i, col := range cols {
+			if b, ok := values[i].([]byte); ok {
+				m[col] = string(b)
+			} else {
+				m[col] = values[i]
+			}
+		}
+		results = append(results, m)
+	}
+
+	return results, rows.Err()
+}
+
 // ExportToCSV 将表单数据导出为 CSV 文件
 func (d *Database) ExportToCSV(tableName string, fields []FieldInfo, outputPath string) error {
 	// 构建查询所有字段的 SQL

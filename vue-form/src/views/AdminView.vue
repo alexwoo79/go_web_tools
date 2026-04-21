@@ -455,7 +455,7 @@ function closeEditModal() {
                     <button class="btn-share" @click="generateShareLink(form)">专用链接</button>
                     <button class="btn-edit" @click="openEditModal(form)">编辑</button>
                     <button class="btn-export" @click="exportCSV(form.Name)">导出 CSV</button>
-                    <button class="btn-analytics" @click="router.push('/admin/analytics')">分析</button>
+                    <button class="btn-analytics" @click="router.push(`/admin/analytics/forms/${form.Name}`)">分析</button>
                   </div>
                 </td>
               </tr>
@@ -484,7 +484,7 @@ function closeEditModal() {
               <button class="btn-share" @click="generateShareLink(form)">专用链接</button>
               <button class="btn-edit" @click="openEditModal(form)">编辑</button>
               <button class="btn-export" @click="exportCSV(form.Name)">导出</button>
-              <button class="btn-analytics" @click="router.push('/admin/analytics')">分析</button>
+              <button class="btn-analytics" @click="router.push(`/admin/analytics/forms/${form.Name}`)">分析</button>
             </div>
           </article>
         </div>
