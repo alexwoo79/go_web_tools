@@ -65,7 +65,7 @@ Verification:
 - Frontend build: `cd vue-form && npm run build` passed.
 
 Commit:
-- Pending (Batch 3 not committed yet in this entry).
+- `de60154` - phase5: batch3 unified validation and field-level errors
 
 ## Notes
 This file is maintained as a historical record. Follow-up entries should append date, changes, verification results, and commit hash.
