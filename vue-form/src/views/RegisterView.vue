@@ -33,7 +33,7 @@ async function register() {
     }
 
     auth.setUser(data.user)
-    router.push('/my-submissions')
+    router.push('/portal')
   } catch {
     error.value = '网络错误，请稍后重试'
   } finally {

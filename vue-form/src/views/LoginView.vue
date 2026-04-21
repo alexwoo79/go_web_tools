@@ -22,11 +22,7 @@ async function login() {
     if (res.ok) {
       // 从 /api/me 获取用户信息并同步到 store，再跳转
       await auth.fetchMe()
-      if (auth.user?.role === 'admin') {
-        router.push('/admin')
-      } else {
-        router.push('/my-submissions')
-      }
+      router.push('/portal')
     } else {
       const data = await res.json()
       error.value = data.error || '登录失败'

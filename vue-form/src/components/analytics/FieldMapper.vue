@@ -194,7 +194,6 @@ watch(yMetricCount, (count) => {
     </template>
   </div>
 </template>
-
 <style scoped>
 .field-mapper { width: 100%; }
 

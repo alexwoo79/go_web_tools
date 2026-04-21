@@ -6,7 +6,7 @@ import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
 import FieldMapper from '@/components/analytics/FieldMapper.vue'
 import ChartCanvas from '@/components/analytics/ChartCanvas.vue'
 import ChartToolbar from '@/components/analytics/ChartToolbar.vue'
-import GanttChart, { type GanttTask, type GanttStats } from '@/components/analytics/GanttChart.vue'
+import GanttChart, { type GanttTask, type GanttStats, type GanttOptions } from '@/components/analytics/GanttChart.vue'
 import type { UploadedDataset } from '@/components/analytics/DatasetUpload.vue'
 import { localizeErrorCode, localizeValidationIssue, type ValidationIssue } from '@/utils/analyticsErrorI18n'
 import { analyticsDemoOptions, analyticsDemoPresets, getAnalyticsDemoPreset, isAnalyticsDemoFileName } from '@/utils/analyticsDemoCsv'
@@ -56,6 +56,14 @@ const chartTitle = ref('')
 const fieldConfig = ref<Record<string, any>>({})
 const optionConfig = ref<Record<string, any>>({})
 const ganttConfig = ref<Record<string, string>>({})
+const ganttOptions = ref<GanttOptions>({
+  showTaskDetails: true,
+  showDuration: true,
+  sortByStart: false,
+  autoNumber: false,
+  darkTheme: false,
+  granularity: 'month',
+})
 
 const building = ref(false)
 const buildError = ref('')
@@ -67,8 +75,7 @@ const chartRef = ref<InstanceType<typeof ChartCanvas>>()
 const ganttRef = ref<InstanceType<typeof GanttChart>>()
 
 const isGanttMode = ref(false)
-const section2Collapsed = ref(false)
-const section3Collapsed = ref(false)
+const activeTab = ref<'step1' | 'step2' | 'step3'>('step1')
 const previewCollapsed = ref(false)
 const demoLoading = ref(false)
 const demoError = ref('')
@@ -166,6 +173,7 @@ function sanitizeYSeriesConfig(kind: string, config: Record<string, any>): Recor
 
 const previewHeaders = computed(() => dataset.value?.headers ?? [])
 const previewRows = computed(() => dataset.value?.preview ?? [])
+const chartTheme = computed(() => String(optionConfig.value.theme || chartOption.value?.theme || 'default'))
 
 function inferHeader(headers: string[], ...keys: string[]): string {
   const lowered = headers.map(header => header.toLowerCase())
@@ -469,6 +477,7 @@ function reset() {
   fieldConfig.value = {}
   optionConfig.value = {}
   ganttConfig.value = {}
+  ganttOptions.value = { showTaskDetails: true, showDuration: true, sortByStart: false, autoNumber: false, darkTheme: false, granularity: 'month' }
   buildFieldErrors.value = {}
 }
 </script>
@@ -485,11 +494,21 @@ function reset() {
 
     <div v-else class="wb-body">
       <section class="wb-panel">
-        <div class="wb-section" :class="{ done: step > 1 }">
-          <div class="section-title">
-            <span class="step-badge">1</span>
-            上传数据
-          </div>
+        <!-- Tab Navigation -->
+        <div class="wb-tabs">
+          <button class="wb-tab" :class="{ active: activeTab === 'step1' }" @click="activeTab = 'step1'">
+            1. 上传数据
+          </button>
+          <button class="wb-tab" :class="{ active: activeTab === 'step2', disabled: step < 2 }" @click="step >= 2 && (activeTab = 'step2')">
+            2. 图表类型
+          </button>
+          <button class="wb-tab" :class="{ active: activeTab === 'step3', disabled: step < 3 }" @click="step >= 3 && (activeTab = 'step3')">
+            3. 字段映射
+          </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div v-if="activeTab === 'step1'" class="wb-section" :class="{ done: step > 1 }">
           <div class="demo-toggle-row">
             <label class="demo-toggle-label">
               <input type="checkbox" v-model="autoLoadDemo" @change="onToggleAutoDemo" />
@@ -514,70 +533,64 @@ function reset() {
           <DatasetUpload @uploaded="onUploaded" />
         </div>
 
-        <div class="wb-section" :class="{ disabled: step < 2, done: step > 2 }">
-          <div class="section-title">
-            <div class="section-head-left">
-              <span class="step-badge">2</span>
-              选择图表类型
-            </div>
-            <button class="btn-fold" @click="section2Collapsed = !section2Collapsed">
-              {{ section2Collapsed ? '展开' : '收起' }}
-            </button>
+        <div v-else-if="activeTab === 'step2'" class="wb-section" :class="{ disabled: step < 2, done: step > 2 }">
+          <div class="gantt-toggle">
+            <label>
+              <input type="checkbox" v-model="isGanttModeModel" />
+              &nbsp;甘特图模式
+            </label>
           </div>
-          <template v-if="!section2Collapsed">
-            <div class="gantt-toggle">
-              <label>
-                <input type="checkbox" v-model="isGanttModeModel" />
-                &nbsp;甘特图模式
-              </label>
-            </div>
-            <ChartOptionsPanel
-              v-if="!isGanttMode"
-              :definitions="definitions"
-              v-model="chartKind"
-              v-model:title="chartTitle"
-              v-model:config="optionConfig"
-              :field-errors="buildFieldErrors"
-            />
-            <p v-else class="gantt-hint">甘特图将使用下方字段映射渲染任务时间线</p>
-          </template>
+          <ChartOptionsPanel
+            v-if="!isGanttMode"
+            :definitions="definitions"
+            v-model="chartKind"
+            v-model:title="chartTitle"
+            v-model:config="optionConfig"
+            :field-errors="buildFieldErrors"
+          />
+          <p v-else class="gantt-hint">甘特图将使用下方字段映射渲染任务时间线</p>
         </div>
 
-        <div class="wb-section" :class="{ disabled: step < 3 }">
-          <div class="section-title">
-            <div class="section-head-left">
-              <span class="step-badge">3</span>
-              字段映射
+        <div v-else-if="activeTab === 'step3'" class="wb-section" :class="{ disabled: step < 3, done: canBuild }">
+          <!-- Regular chart field mapper -->
+          <FieldMapper
+            v-if="!isGanttMode"
+            :headers="dataset?.headers ?? []"
+            :chart-kind="chartKind"
+            :definitions="definitions"
+            :context-config="optionConfig"
+            :field-errors="buildFieldErrors"
+            v-model="fieldConfig"
+          />
+          <!-- Gantt field mapper -->
+          <div v-else class="gantt-field-mapper">
+            <div v-for="f in GANTT_FIELDS" :key="f.key" class="gantt-field-row">
+              <label class="gf-label">
+                {{ f.label }}
+                <span v-if="f.required" class="req">*</span>
+              </label>
+              <select class="gf-select" v-model="ganttConfig[f.key]">
+                <option value="">— 不映射 —</option>
+                <option v-for="h in (dataset?.headers ?? [])" :key="h" :value="h">{{ h }}</option>
+              </select>
             </div>
-            <button class="btn-fold" @click="section3Collapsed = !section3Collapsed">
-              {{ section3Collapsed ? '展开' : '收起' }}
-            </button>
+            <div class="gantt-opts-divider">显示选项</div>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.showTaskDetails" /> 显示任务详情</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.showDuration" /> 显示周期</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.sortByStart" /> 按开始时间排序</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.autoNumber" /> 自动编号</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.darkTheme" /> 深色主题</label>
+            <div class="gantt-field-row">
+              <label class="gf-label">时间粒度</label>
+              <select class="gf-select" v-model="ganttOptions.granularity">
+                <option value="day">日</option>
+                <option value="week">周</option>
+                <option value="month">月</option>
+                <option value="quarter">季度</option>
+                <option value="year">年</option>
+              </select>
+            </div>
           </div>
-          <template v-if="!section3Collapsed">
-            <!-- Regular chart field mapper -->
-            <FieldMapper
-              v-if="!isGanttMode"
-              :headers="dataset?.headers ?? []"
-              :chart-kind="chartKind"
-              :definitions="definitions"
-              :context-config="optionConfig"
-              :field-errors="buildFieldErrors"
-              v-model="fieldConfig"
-            />
-            <!-- Gantt field mapper -->
-            <div v-else class="gantt-field-mapper">
-              <div v-for="f in GANTT_FIELDS" :key="f.key" class="gantt-field-row">
-                <label class="gf-label">
-                  {{ f.label }}
-                  <span v-if="f.required" class="req">*</span>
-                </label>
-                <select class="gf-select" v-model="ganttConfig[f.key]">
-                  <option value="">— 不映射 —</option>
-                  <option v-for="h in (dataset?.headers ?? [])" :key="h" :value="h">{{ h }}</option>
-                </select>
-              </div>
-            </div>
-          </template>
         </div>
 
         <div class="wb-actions">
@@ -596,7 +609,7 @@ function reset() {
         </div>
       </section>
 
-      <section class="wb-chart-area">
+      <section class="wb-chart-area" :class="isGanttMode ? 'gantt-mode' : 'normal-mode'">
         <div v-if="dataset" class="preview-panel">
           <div class="preview-head">
             <div>
@@ -635,12 +648,15 @@ function reset() {
               ref="ganttRef"
               :tasks="ganttData.tasks"
               :stats="ganttData.stats"
+              :theme="chartTheme"
+              :options="ganttOptions"
             />
             <ChartCanvas
               v-else-if="!isGanttMode"
               ref="chartRef"
               :option="chartOption"
               :loading="building"
+              :theme="chartTheme"
             />
           </ChartToolbar>
         </div>
@@ -651,13 +667,13 @@ function reset() {
 
 <style scoped>
 .workbench { min-height: 100vh; background: #f5f6fa; display: flex; flex-direction: column; }
-.wb-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: #fff; border-bottom: 1px solid #e8e8e8; }
+.wb-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; background: #fff; border-bottom: 1px solid #e8e8e8; max-width: 1200px; margin: 0 auto; width: 100%; }
 .wb-title { margin: 0; font-size: 20px; font-weight: 600; color: #1a1a1a; }
 .btn-back { padding: 6px 16px; border: 1px solid #d9d9d9; border-radius: 6px; background: #fff; color: #555; cursor: pointer; font-size: 14px; }
 .btn-back:hover { background: #f5f5f5; }
 .wb-loading, .wb-error { padding: 60px; text-align: center; color: #888; font-size: 16px; }
 .wb-error { color: #e53e3e; }
-.wb-body { display: flex; flex: 1; gap: 20px; padding: 24px; align-items: flex-start; }
+.wb-body { display: flex; flex: 1; gap: 20px; padding: 24px; align-items: flex-start; min-height: 0; max-width: 1200px; margin: 0 auto; width: 100%; }
 .wb-panel { width: 380px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
 .wb-section { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px; transition: opacity 0.2s; }
 .wb-section.disabled { opacity: 0.45; pointer-events: none; }
@@ -675,6 +691,42 @@ function reset() {
   cursor: pointer;
 }
 .btn-fold:hover { background: #f7f7f7; }
+.wb-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid #e8e8e8;
+  margin-bottom: 12px;
+}
+.wb-tab {
+  flex: 1;
+  padding: 10px 12px;
+  background: #f5f5f5;
+  border: 1px solid #e8e8e8;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.wb-tab:hover:not(.disabled) {
+  background: #fff;
+  color: #1677ff;
+}
+.wb-tab.active {
+  background: #fff;
+  color: #1677ff;
+  border-color: #1677ff;
+  border-bottom: 2px solid #1677ff;
+}
+.wb-tab.disabled {
+  opacity: 1;
+  background: #f5f5f5;
+  color: #999;
+  cursor: not-allowed;
+}
 .wb-actions { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 16px; }
 .build-error { color: #e53e3e; font-size: 13px; margin: 0 0 10px; }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -751,16 +803,18 @@ function reset() {
 .gantt-toggle { margin-bottom: 10px; font-size: 14px; color: #333; }
 .gantt-hint { font-size: 13px; color: #888; margin: 0; }
 .gantt-field-mapper { display: flex; flex-direction: column; gap: 8px; }
+.gantt-opts-divider { font-size: 12px; color: #888; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb; }
+.gantt-opt-row { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; user-select: none; }
 .gantt-field-row { display: flex; align-items: center; gap: 8px; }
 .gf-label { width: 100px; font-size: 13px; color: #333; flex-shrink: 0; }
 .req { color: #e53e3e; }
 .gf-select { flex: 1; padding: 4px 8px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; }
 .wb-chart-area {
   flex: 1;
+  min-width: 0;
   background: #fff;
   border: 1px solid #e8e8e8;
   border-radius: 8px;
-  min-height: 460px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -768,10 +822,18 @@ function reset() {
   padding: 16px;
   gap: 12px;
 }
+.wb-chart-area.gantt-mode {
+  min-height: 560px;
+}
+.wb-chart-area.normal-mode {
+  min-height: 560px;
+}
 .preview-panel {
   border: 1px solid #d8e5f3;
   border-radius: 8px;
   background: #fbfdff;
+  flex-shrink: 0;
+  min-width: 0;
 }
 .preview-head {
   display: flex;
@@ -790,6 +852,8 @@ function reset() {
   color: #6b7a89;
 }
 .preview-table-wrap {
+  width: 100%;
+  min-width: 0;
   overflow-x: auto;
   max-height: 220px;
   overflow-y: auto;
@@ -813,17 +877,30 @@ function reset() {
   font-weight: 600;
 }
 .chart-stage {
+  min-width: 0;
   flex: 1;
-  min-height: 320px;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: flex-start;
+  position: relative;
+}
+.wb-chart-area.gantt-mode .chart-stage {
+  min-height: 560px;
+}
+.wb-chart-area.normal-mode .chart-stage {
+  min-height: 560px;
+}
+.chart-stage > * {
+  width: 100%;
+  height: 100%;
 }
 .chart-placeholder { color: #bbb; font-size: 15px; text-align: center; }
 @media (max-width: 860px) {
   .wb-body { flex-direction: column; padding: 16px; }
   .wb-panel { width: 100%; }
-  .wb-chart-area { min-height: 320px; width: 100%; }
+  .wb-chart-area { width: 100%; }
+  .wb-chart-area.gantt-mode { min-height: 560px; }
+  .wb-chart-area.normal-mode { min-height: 560px; }
   .demo-toggle-row { flex-direction: column; align-items: stretch; }
 }
 </style>

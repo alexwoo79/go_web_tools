@@ -627,7 +627,7 @@ function closeEditModal() {
 .btn-logout:hover { background: rgba(255,255,255,.1); }
 .link { color: rgba(255,255,255,.7); text-decoration: none; font-size: .85rem; }
 
-.container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+.container { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
 .state-msg { text-align: center; color: #888; padding: 3rem 0; }
 .state-msg.error { color: #e53e3e; }
 
@@ -763,13 +763,13 @@ function closeEditModal() {
 }
 table {
   width: 100%;
-  min-width: 720px;
+  min-width: 980px;
   border-collapse: collapse;
 }
 
 .col-name { width: auto; }
 .col-num { width: 120px; }
-.col-action { width: 460px; }
+.col-action { width: 620px; }
 
 th {
   background: #f6f8fd;
@@ -845,15 +845,15 @@ tr:hover td { background: #f9fbff; }
 }
 
 .actions-group {
-  display: inline-grid;
-  grid-auto-flow: column;
-  justify-content: end;
+  display: inline-flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
   align-items: center;
   gap: .5rem;
 }
 
 .btn-view-data, .btn-view, .btn-share, .btn-edit, .btn-export, .btn-analytics {
-  min-width: 86px;
+  min-width: 82px;
   height: 34px;
   padding: 0 .75rem;
   border-radius: 6px;

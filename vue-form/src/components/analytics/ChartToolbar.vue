@@ -4,6 +4,8 @@ import { ref } from 'vue'
 const props = defineProps<{
   chartRef?: {
     exportPNG?: () => void
+    exportSVG?: () => void
+    exportHTML?: () => void
     exportJSON?: () => void
     enterFullscreen?: () => void
   }
@@ -14,6 +16,14 @@ const copyMsg = ref('')
 
 function doExportPNG() {
   props.chartRef?.exportPNG?.()
+}
+
+function doExportSVG() {
+  props.chartRef?.exportSVG?.()
+}
+
+function doExportHTML() {
+  props.chartRef?.exportHTML?.()
 }
 
 async function doCopyJSON() {
@@ -35,6 +45,12 @@ function doFullscreen() {
         <button class="tb-btn" title="导出 PNG" @click="doExportPNG">
           <span>↓ PNG</span>
         </button>
+        <button class="tb-btn" title="导出 SVG" @click="doExportSVG">
+          <span>↓ SVG</span>
+        </button>
+        <button class="tb-btn" title="导出 HTML" @click="doExportHTML">
+          <span>↓ HTML</span>
+        </button>
         <button class="tb-btn" title="复制图表配置 JSON" @click="doCopyJSON">
           <span>{{ copyMsg || '复制 JSON' }}</span>
         </button>
@@ -52,7 +68,12 @@ function doFullscreen() {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+.chart-toolbar-wrap > :last-child {
+  flex: 1;
+  min-height: 0;
 }
 .toolbar {
   display: flex;

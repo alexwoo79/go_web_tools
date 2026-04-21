@@ -5,7 +5,7 @@ import ChartCanvas from '@/components/analytics/ChartCanvas.vue'
 import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
 import FieldMapper from '@/components/analytics/FieldMapper.vue'
 import ChartToolbar from '@/components/analytics/ChartToolbar.vue'
-import GanttChart, { type GanttTask, type GanttStats } from '@/components/analytics/GanttChart.vue'
+import GanttChart, { type GanttTask, type GanttStats, type GanttOptions } from '@/components/analytics/GanttChart.vue'
 import { localizeErrorCode, localizeValidationIssue, type ValidationIssue } from '@/utils/analyticsErrorI18n'
 
 const GANTT_FIELDS = [
@@ -65,6 +65,14 @@ const chartTitle = ref('')
 const fieldConfig = ref<Record<string, any>>({})
 const optionConfig = ref<Record<string, any>>({})
 const ganttConfig = ref<Record<string, string>>({})
+const ganttOptions = ref<GanttOptions>({
+  showTaskDetails: true,
+  showDuration: true,
+  sortByStart: false,
+  autoNumber: false,
+  darkTheme: false,
+  granularity: 'month',
+})
 const isGanttMode = ref(false)
 
 const building = ref(false)
@@ -323,6 +331,22 @@ onMounted(fetchSchema)
                 <option v-for="h in headers" :key="h" :value="h">{{ h }}</option>
               </select>
             </div>
+            <div class="gantt-opts-divider">显示选项</div>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.showTaskDetails" /> 显示任务详情</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.showDuration" /> 显示周期</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.sortByStart" /> 按开始时间排序</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.autoNumber" /> 自动编号</label>
+            <label class="gantt-opt-row"><input type="checkbox" v-model="ganttOptions.darkTheme" /> 深色主题</label>
+            <div class="gantt-field-row">
+              <label class="gf-label">时间粒度</label>
+              <select class="gf-select" v-model="ganttOptions.granularity">
+                <option value="day">日</option>
+                <option value="week">周</option>
+                <option value="month">月</option>
+                <option value="quarter">季度</option>
+                <option value="year">年</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -348,6 +372,7 @@ onMounted(fetchSchema)
             ref="ganttRef"
             :tasks="ganttData.tasks"
             :stats="ganttData.stats"
+            :options="ganttOptions"
           />
           <ChartCanvas
             v-else-if="!isGanttMode"
@@ -363,9 +388,13 @@ onMounted(fetchSchema)
 
 <style scoped>
 .form-analytics-page {
-  min-height: 100vh;
+  height: 100vh;
   background: #f6f8fb;
   padding: 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .fa-header {
@@ -414,12 +443,16 @@ onMounted(fetchSchema)
   display: grid;
   grid-template-columns: 380px 1fr;
   gap: 16px;
+  flex: 1;
+  min-height: 0;
 }
 
 .fa-left {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .panel {
@@ -474,14 +507,20 @@ onMounted(fetchSchema)
   background: #fff;
   border: 1px solid #e7e9ef;
   border-radius: 12px;
-  padding: 16px;
-  min-height: 480px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .placeholder {
   text-align: center;
   color: #9aa2b1;
-  margin-top: 180px;
+  padding: 60px 20px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gantt-toggle {
@@ -496,6 +535,8 @@ onMounted(fetchSchema)
   flex-direction: column;
   gap: 8px;
 }
+.gantt-opts-divider { font-size: 12px; color: #888; margin-top: 6px; padding-top: 6px; border-top: 1px solid #e5e7eb; }
+.gantt-opt-row { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; user-select: none; }
 .gantt-field-row {
   display: flex;
   align-items: center;

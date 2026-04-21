@@ -9,12 +9,14 @@ import ChangePasswordView from '../views/ChangePasswordView.vue'
 import UserManagementView from '../views/UserManagementView.vue'
 import AnalyticsWorkbenchView from '../views/AnalyticsWorkbenchView.vue'
 import FormAnalyticsView from '../views/FormAnalyticsView.vue'
+import NavigationHubView from '../views/NavigationHubView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/', name: 'home', component: HomeView, meta: { requiresAuth: true, title: '表单中心' } },
+    { path: '/portal', name: 'portal', component: NavigationHubView, meta: { requiresAuth: true, title: '工作导航' } },
     { path: '/login', name: 'login', component: LoginView, meta: { title: '用户登录' } },
     { path: '/register', name: 'register', component: RegisterView, meta: { title: '注册账号' } },
     {
@@ -57,13 +59,13 @@ const router = createRouter({
       path: '/admin/analytics',
       name: 'admin-analytics',
       component: AnalyticsWorkbenchView,
-      meta: { requiresAuth: true, requiresAdmin: true, title: '数据分析工作台' },
+      meta: { requiresAuth: true, title: '数据分析工作台' },
     },
     {
       path: '/admin/analytics/forms/:formName',
       name: 'admin-analytics-form',
       component: FormAnalyticsView,
-      meta: { requiresAuth: true, requiresAdmin: true, title: '表单数据分析' },
+      meta: { requiresAuth: true, title: '表单数据分析' },
     },
   ],
 })
