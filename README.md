@@ -1,4 +1,4 @@
-# Go Web 表单系统 - README
+# Go Web 表单系统/数据制图 - README
 
 [TOC]
 
@@ -198,3 +198,51 @@ go test ./...
 
 MIT License
 # go_form_web
+
+## 📊 数据分析与制图（使用说明）
+
+本项目内置数据分析与制图功能，前端提供两个主要入口：
+
+- **数据分析工作台（Workbench）**：适合通过上传 CSV/样例数据进行可视化探索与试验。
+  - 支持可视化配置（图表类型、字段映射、主题等）。
+  - 支持在表格预览中进行内联编辑（使用 ag-grid），编辑后可点击“保存”将变更持久化到后台数据集（PUT /api/admin/analytics/datasets/{id}），随后构建时会使用已保存的数据。
+  - 预览表格支持分页（每页 5/10/20/50/全部）和折叠视图。
+
+- **表单分析页面（Form Analytics）**：直接使用系统已收集的表单提交数据生成图表，预览为只读（与 Workbench 风格一致），便于快速从真实提交数据建图。
+
+主要功能与 API：
+
+- 构建图表（通用/甘特图）
+  - 使用已上传数据集构建：POST /api/admin/analytics/build  (body 包含 `datasetId`, `chartKind`, `config` 等)
+  - 使用表单数据构建：POST /api/admin/analytics/forms/{formName}/build
+  - 甘特图专用构建接口：POST /api/admin/analytics/forms/{formName}/gantt/build
+
+- 预览与数据集管理
+  - 获取数据集（含预览页）：GET /api/admin/analytics/datasets/{id}?full=1
+  - 更新数据集的行（保存预览编辑）：PUT /api/admin/analytics/datasets/{id}  （body: { rows: [][]string }）
+  - 表单预览（用于 Form 页）：GET /api/admin/analytics/forms/{formName}/preview?full=1
+
+UI 行为说明：
+
+- Workbench 中的表格支持编辑并保存；Form 页面为只读预览以避免误修改。
+- 导出图片（PNG）由图表工具栏提供（ChartToolbar），界面上的“导出 PNG”按钮已移除以避免重复。
+- 甘特图支持显示任务详情（`showTaskDetails`）、显示总周期统计（总周期天数）等配置，均可通过字段映射与构建选项控制。
+- 为提升大数据量场景的可用性，服务器对预览提供了分页支持（query 中的 page/size），前端默认分页大小为 5（Form 页）或可调（Workbench）。
+
+打包与性能建议：
+
+- 生产构建会将大型依赖（如 echarts、ag-grid）打包为独立的 vendor chunk；若要进一步减小首屏体积，请考虑：
+  - 动态 import (`import()`) 懒加载 `GanttChart`, `ChartCanvas`, `AgGridVue` 等仅在少数场景使用的组件；
+  - 将不常用的功能拆分为异步路由或按需加载模块。
+
+示例：在本地调试前端与后端（前后端分离）
+
+```bash
+# 在一个终端运行后端
+make api
+
+# 在另一个终端运行前端开发服务器
+make web
+```
+
+更多高级打包/部署说明参考上文的“构建项目”与 Docker 小节。
