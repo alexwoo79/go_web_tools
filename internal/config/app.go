@@ -91,7 +91,6 @@ func (a *App) Router() http.Handler {
 	mux.HandleFunc("/api/submit/", a.handler.SubmitHandler)
 
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-	mux.Handle("/gen/", http.StripPrefix("/gen/", http.FileServer(http.Dir("generated"))))
 
 	return mux
 }

@@ -9,13 +9,10 @@ cd /root/go-web
 # 2. 下载依赖
 go mod download
 
-# 3. 初始化项目（可选）
-./init.sh
-
-# 4. 运行服务器
+# 3. 运行服务器
 go run cmd/server/main.go
 
-# 5. 访问应用
+# 4. 访问应用
 浏览器打开: http://localhost:8080
 ```
 
@@ -80,12 +77,6 @@ make dev
 - 文件: `data/{form-name}/submit_*.json`
 
 ## 高级功能
-
-### 生成静态页面
-
-```bash
-go run cmd/generate/main.go -output generated
-```
 
 ### 使用自定义端口
 

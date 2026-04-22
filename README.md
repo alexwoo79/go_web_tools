@@ -98,19 +98,23 @@ forms:
 ```
 go-web/
 ├── cmd/
-│   ├── server/     # Web 服务器
-│   └── generate/   # 表单生成器
+│   └── server/     # Web 服务器
 ├── internal/
 │   ├── config/     # 配置管理
 │   ├── handler/    # HTTP 处理器
 │   ├── models/     # 数据模型
 │   └── utils/      # 工具函数
 ├── ui/
-│   └── templates/  # HTML 模板
+│   ├── templates/  # HTML 模板
+│   ├── static/     # 内嵌静态资源
+│   └── frontend/   # 内嵌 Vue 构建产物
 ├── data/           # 数据文件
 ├── config.yaml     # 配置文件
 └── go.mod          # Go 模块
 ```
+
+更多仓库整理、运行期/开发期文件清单与删除流程请参阅：
+[docs/REPO_MAINTENANCE.md](docs/REPO_MAINTENANCE.md)
 
 ## 🛠️ 开发
 
