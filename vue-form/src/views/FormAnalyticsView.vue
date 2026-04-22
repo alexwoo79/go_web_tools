@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { AgGridVue } from 'ag-grid-vue3'
-import 'ag-grid-community/styles/ag-grid.css'
-import 'ag-grid-community/styles/ag-theme-alpine.css'
 import { useRoute, useRouter } from 'vue-router'
 import ChartCanvas from '@/components/analytics/ChartCanvas.vue'
 import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
@@ -83,42 +80,29 @@ const isGanttMode = computed(() => chartMode.value === 'gantt')
 const previewDatasetId = ref<string | null>(null)
 const previewHeaders = ref<string[]>([])
 const previewRows = ref<string[][]>([])
-const isEditingPreview = ref(false)
-const editPreviewRows = ref<any[][]>([])
+// editing is disabled for Form preview — keep preview read-only
 
-// ag-grid state for form preview
-const gridApi = ref<any>(null)
-const gridColumnDefs = ref<any[]>([])
-const gridRowData = ref<any[]>([])
+// pagination for non-edit preview (align with Workbench defaults)
+const previewPage = ref(1)
+const previewPageSize = ref(5)
+const previewPageSizes = [5, 10, 20, 50, -1]
 
-function buildGridDefs(headers: string[]) {
-  return headers.map(h => ({ field: h, editable: true, resizable: true }))
-}
+const totalPreviewPages = computed(() => {
+  const total = previewRows.value.length
+  if (previewPageSize.value < 0) return 1
+  return Math.max(1, Math.ceil(total / previewPageSize.value))
+})
 
-function refreshGrid() {
-  gridColumnDefs.value = buildGridDefs(previewHeaders.value)
-  gridRowData.value = previewRows.value.map(r => {
-    const obj: Record<string, any> = {}
-    previewHeaders.value.forEach((h, i) => { obj[h] = r[i] ?? '' })
-    return obj
-  })
-}
+const pagedPreviewRows = computed(() => {
+  if (previewPageSize.value < 0) return previewRows.value
+  const start = (previewPage.value - 1) * previewPageSize.value
+  return previewRows.value.slice(start, start + previewPageSize.value)
+})
 
-watch([previewHeaders, previewRows], refreshGrid, { immediate: true })
+// collapsed state for preview panel (keeps parity with Workbench)
+const previewCollapsed = ref(false)
 
-function onGridReady(params: any) {
-  gridApi.value = params.api
-}
-
-function onCellValueChanged(e: any) {
-  const rowIndex = e.rowIndex
-  const colId = e.colDef?.field
-  const colIndex = previewHeaders.value.indexOf(colId)
-  if (colIndex >= 0) {
-    if (!editPreviewRows.value[rowIndex]) editPreviewRows.value[rowIndex] = []
-    editPreviewRows.value[rowIndex][colIndex] = e.newValue
-  }
-}
+// no ag-grid state/functions — preview is read-only on Form page
 
 watch(chartMode, () => {
   chartOption.value = null
@@ -219,7 +203,7 @@ async function loadFormPreview() {
   loading.value = true
   error.value = ''
   try {
-    const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/preview`, { credentials: 'include' })
+    const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/preview?full=1`, { credentials: 'include' })
     if (!res.ok) throw new Error((await res.text()) || `加载预览失败 (${res.status})`)
     const payload = await res.json()
     previewDatasetId.value = payload.id
@@ -229,44 +213,6 @@ async function loadFormPreview() {
     error.value = e?.message ?? '加载预览失败'
   } finally {
     loading.value = false
-  }
-}
-
-function onEditPreview() {
-  if (!previewRows.value) return
-  editPreviewRows.value = previewRows.value.map(r => [...r])
-  isEditingPreview.value = true
-  refreshGrid()
-}
-
-function onCancelEditPreview() {
-  isEditingPreview.value = false
-  editPreviewRows.value = []
-}
-
-async function onSaveEditPreview() {
-  if (!previewDatasetId.value || editPreviewRows.value.length === 0) {
-    isEditingPreview.value = false
-    editPreviewRows.value = []
-    return
-  }
-  try {
-    const res = await fetch(`/api/admin/analytics/datasets/${encodeURIComponent(previewDatasetId.value)}`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: editPreviewRows.value })
-    })
-    if (!res.ok) throw new Error((await res.text()) || `保存失败 (${res.status})`)
-    const payload = await res.json()
-    previewRows.value = editPreviewRows.value.map(r => [...r])
-    isEditingPreview.value = false
-    editPreviewRows.value = []
-    if (payload.rowCount) {
-      // no-op, just keep metadata if needed
-    }
-  } catch (e: any) {
-    error.value = e?.message ?? '保存失败'
   }
 }
 
@@ -300,6 +246,11 @@ async function fetchSchema() {
   } finally {
     loading.value = false
   }
+    // Auto-load preview for this form to match the data analysis page behavior.
+    // Ignore errors — preview is optional.
+    try {
+      await loadFormPreview()
+    } catch {}
 }
 
 async function buildFromForm() {
@@ -398,10 +349,7 @@ async function buildFromForm() {
   }
 }
 
-function exportPNG() {
-  if (isGanttMode.value) ganttRef.value?.exportPNG()
-  else chartRef.value?.exportPNG()
-}
+// exportPNG removed — export handled by chart toolbar
 
 watch(() => route.params.formName, fetchSchema)
 onMounted(fetchSchema)
@@ -449,12 +397,7 @@ onMounted(fetchSchema)
 
         <div class="panel">
           <h3>字段映射</h3>
-          <div style="margin-top:8px; margin-bottom:8px; display:flex; gap:8px; align-items:center;">
-            <button class="btn-load-demo" @click="loadFormPreview">加载预览</button>
-            <button v-if="previewDatasetId && !isEditingPreview" class="btn-edit" @click="onEditPreview">编辑预览</button>
-            <button v-if="isEditingPreview" class="btn-save" @click="onSaveEditPreview">保存预览</button>
-            <button v-if="isEditingPreview" class="btn-cancel" @click="onCancelEditPreview">取消</button>
-          </div>
+          
           <FieldMapper
             v-if="chartMode === 'general'"
             :headers="headers"
@@ -491,29 +434,7 @@ onMounted(fetchSchema)
           </div>
         </div>
 
-        <div v-if="previewHeaders.length" class="panel">
-          <h3>数据预览</h3>
-          <div v-if="!isEditingPreview">
-            <table class="preview-table">
-              <thead><tr><th v-for="h in previewHeaders" :key="h">{{ h }}</th></tr></thead>
-              <tbody>
-                <tr v-for="(row, i) in previewRows" :key="i">
-                  <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div v-else class="ag-theme-alpine" style="width:100%; height:260px;">
-            <AgGridVue
-              class="ag-grid"
-              style="width:100%; height:100%;"
-              :columnDefs="gridColumnDefs"
-              :rowData="gridRowData"
-              @grid-ready="onGridReady"
-              @cell-value-changed="onCellValueChanged"
-            />
-          </div>
-        </div>
+        
 
         <div class="panel">
           <p v-if="buildError" class="error-text">{{ buildError }}</p>
@@ -521,16 +442,61 @@ onMounted(fetchSchema)
             <button class="btn-build" :disabled="building || !canBuild" @click="buildFromForm">
               {{ building ? '生成中…' : '生成图表' }}
             </button>
-            <button v-if="chartOption || ganttData" class="btn-export" @click="exportPNG">导出 PNG</button>
+            <!-- Export handled by chart toolbar; button removed -->
           </div>
         </div>
       </section>
 
       <section class="fa-right">
+        <!-- Preview: use same UI as Workbench (non-editable table, same pager) -->
+        <div v-if="previewHeaders.length" class="preview-panel">
+          <div class="preview-head">
+            <div>
+              <div class="preview-title">数据预览</div>
+              <div class="preview-sub">展示前 {{ pagedPreviewRows.length }} 行，共 {{ previewRows.length }} 行</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="btn-fold" @click="previewCollapsed = !previewCollapsed">{{ previewCollapsed ? '展开' : '收起' }}</button>
+            </div>
+          </div>
+          <div v-if="!previewCollapsed" class="preview-table-wrap">
+            <div class="simple-table-wrap">
+              <div class="preview-scroll">
+                <table class="preview-table">
+                  <thead>
+                    <tr>
+                      <th v-for="h in previewHeaders" :key="h">{{ h }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, i) in pagedPreviewRows" :key="i">
+                      <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="preview-pager">
+                <div>
+                  <label>每页：</label>
+                  <select v-model="previewPageSize">
+                    <option v-for="s in previewPageSizes" :key="s" :value="s">{{ s>0 ? s : '全部' }}</option>
+                  </select>
+                </div>
+                <div>
+                  <button :disabled="previewPage<=1" @click="previewPage--">上一页</button>
+                  <span>{{ previewPage }} / {{ totalPreviewPages }}</span>
+                  <button :disabled="previewPage>=totalPreviewPages" @click="previewPage++">下一页</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-if="!chartOption && !ganttData && !building" class="placeholder">选择映射后点击「生成图表」</div>
-          <ChartToolbar
-            v-else
-            :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
+
+        <ChartToolbar
+          v-if="chartOption || ganttData || building"
+          :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
           v-model:theme="toolbarTheme"
         >
           <GanttChart
@@ -595,9 +561,10 @@ onMounted(fetchSchema)
   background: var(--bg-elevated);
   color: var(--text-700);
   border-radius: 8px;
-  padding: 8px 14px;
-  cursor: pointer;
 }
+
+.btn-export { /* removed: export handled by chart toolbar */ }
+.btn-export:hover { /* removed */ }
 
 .state {
   text-align: center;
@@ -637,6 +604,20 @@ onMounted(fetchSchema)
   font-size: 15px;
   color: var(--text-700);
 }
+
+.preview-scroll {
+  max-height: 36vh;
+  overflow-y: auto;
+}
+.preview-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+.preview-pager .pager-left select { margin-left: 6px }
+.preview-pager .pager-right button { margin: 0 6px }
 
 .actions {
   display: flex;
@@ -735,4 +716,32 @@ onMounted(fetchSchema)
     grid-template-columns: 1fr;
   }
 }
+
+/* Preview styles copied from AnalyticsWorkbenchView to align layout */
+.preview-panel {
+  border: 1px solid var(--surface-card-border);
+  border-radius: 8px;
+  background: transparent; /* removed panel background */
+  flex-shrink: 0;
+  min-width: 0;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--surface-card-border);
+  background: transparent; /* removed header background */
+}
+.preview-title { font-size: 14px; font-weight: 600; color: var(--text-700); }
+.preview-sub { font-size: 12px; color: var(--text-muted); }
+.preview-table-wrap { width: 100%; min-width: 0; overflow-x: auto; max-height: 220px; overflow-y: auto; padding: 12px; }
+.preview-table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+.preview-table th { border: 1px solid var(--surface-card-border); padding: 10px 12px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; background: #f5f5f5; color: var(--text-700); font-weight: 600; }
+.preview-table td { border: 1px solid var(--surface-card-border); padding: 8px 12px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.btn-fold { border: 1px solid var(--surface-header-border); border-radius: 6px; background: var(--bg-elevated); color: var(--text-700); padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.btn-fold:hover { background: var(--bg-soft-blue); }
 </style>
+

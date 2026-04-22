@@ -29,7 +29,8 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 900,
+    // raise warning threshold slightly and split vendor packages into per-package chunks
+    chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -43,19 +44,26 @@ export default defineConfig({
             return 'echarts-misc'
           }
 
-          if (id.includes('/node_modules/vue/') || id.includes('/node_modules/@vue/')) {
-            return 'vue-vendor'
+          if (id.includes('/node_modules/ag-grid-community/') || id.includes('/node_modules/ag-grid-vue3/') || id.includes('/node_modules/ag-grid-enterprise/')) {
+            return 'ag-grid-vendor'
           }
 
-          if (id.includes('/node_modules/vue-router/')) {
-            return 'router-vendor'
-          }
+          if (id.includes('/node_modules/lodash/')) return 'lodash-vendor'
+          if (id.includes('/node_modules/vue/') || id.includes('/node_modules/@vue/')) return 'vue-vendor'
+          if (id.includes('/node_modules/vue-router/')) return 'router-vendor'
+          if (id.includes('/node_modules/pinia/')) return 'pinia-vendor'
 
-          if (id.includes('/node_modules/pinia/')) {
-            return 'pinia-vendor'
+          // Fallback: create per-package vendor chunks for better caching and smaller chunk sizes
+          try {
+            const parts = id.split('/node_modules/')[1].split('/')
+            let pkg = parts[0]
+            if (pkg && pkg.startsWith('@') && parts.length > 1) {
+              pkg = `${pkg}/${parts[1]}`
+            }
+            return `vendor-${pkg.replace('/', '-')}`
+          } catch (e) {
+            return 'vendor'
           }
-
-          return 'vendor'
         },
       },
     },

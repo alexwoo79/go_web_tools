@@ -4,6 +4,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -45,6 +46,61 @@ func (ah *AnalyticsHandler) adminUserID(r *http.Request) int {
 	return ah.primary.SessionUserID(cookie.Value)
 }
 
+// parsePageSize reads paging query parameters from the request.
+// Returns page (1-based) and size. If size==0 the caller requested the full result set.
+func parsePageSize(r *http.Request) (int, int) {
+	q := r.URL.Query()
+	if q.Get("full") == "1" || strings.EqualFold(q.Get("full"), "true") {
+		return 1, 0
+	}
+	page := 1
+	size := 5
+	if p := q.Get("page"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+			page = v
+		}
+	}
+	if s := q.Get("size"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v >= 0 {
+			size = v
+		}
+	}
+	// enforce sensible bounds
+	const maxSize = 1000
+	if size > maxSize {
+		size = maxSize
+	}
+	if page < 1 {
+		page = 1
+	}
+	return page, size
+}
+
+// slicePreview returns the requested page of rows and the total page count.
+// If size==0 the full rows slice is returned and pageCount is 1.
+func slicePreview(rows [][]string, page, size int) ([][]string, int) {
+	total := len(rows)
+	if size == 0 {
+		return rows, 1
+	}
+	if total == 0 {
+		return [][]string{}, 0
+	}
+	pageCount := (total + size - 1) / size
+	if page > pageCount {
+		return [][]string{}, pageCount
+	}
+	start := (page - 1) * size
+	if start >= total {
+		return [][]string{}, pageCount
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	return rows[start:end], pageCount
+}
+
 // UploadDatasetHandler handles POST /api/admin/analytics/datasets/upload
 func (ah *AnalyticsHandler) UploadDatasetHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(11 << 20); err != nil {
@@ -72,9 +128,10 @@ func (ah *AnalyticsHandler) UploadDatasetHandler(w http.ResponseWriter, r *http.
 	}
 
 	preview := ds.Rows
-	if len(preview) > 5 {
-		preview = preview[:5]
-	}
+
+	// apply optional paging query params
+	page, size := parsePageSize(r)
+	preview, pageCount := slicePreview(ds.Rows, page, size)
 
 	jsonResp(w, http.StatusOK, map[string]any{
 		"id":        ds.ID,
@@ -83,6 +140,9 @@ func (ah *AnalyticsHandler) UploadDatasetHandler(w http.ResponseWriter, r *http.
 		"headers":   ds.Headers,
 		"preview":   preview,
 		"rowCount":  len(ds.Rows),
+		"page":      page,
+		"pageSize":  size,
+		"pageCount": pageCount,
 		"expiresIn": 3600,
 	})
 }
@@ -101,9 +161,9 @@ func (ah *AnalyticsHandler) GetDatasetHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	preview := ds.Rows
-	if len(preview) > 5 {
-		preview = preview[:5]
-	}
+
+	page, size := parsePageSize(r)
+	preview, pageCount := slicePreview(ds.Rows, page, size)
 
 	jsonResp(w, http.StatusOK, map[string]any{
 		"id":        ds.ID,
@@ -112,6 +172,9 @@ func (ah *AnalyticsHandler) GetDatasetHandler(w http.ResponseWriter, r *http.Req
 		"headers":   ds.Headers,
 		"preview":   preview,
 		"rowCount":  len(ds.Rows),
+		"page":      page,
+		"pageSize":  size,
+		"pageCount": pageCount,
 		"createdAt": ds.CreatedAt,
 		"expiresAt": ds.ExpiresAt,
 	})
@@ -423,16 +486,17 @@ func (ah *AnalyticsHandler) GetFormPreviewHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	preview := ds.Rows
-	if len(preview) > 5 {
-		preview = preview[:5]
-	}
+	page, size := parsePageSize(r)
+	preview, pageCount := slicePreview(ds.Rows, page, size)
 
 	jsonResp(w, http.StatusOK, map[string]any{
-		"id":       ds.ID,
-		"headers":  ds.Headers,
-		"preview":  preview,
-		"rowCount": len(ds.Rows),
+		"id":        ds.ID,
+		"headers":   ds.Headers,
+		"preview":   preview,
+		"rowCount":  len(ds.Rows),
+		"page":      page,
+		"pageSize":  size,
+		"pageCount": pageCount,
 	})
 }
 
@@ -520,6 +584,8 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 // ganttBuildRequest is the JSON body for the gantt build endpoints.
 type ganttBuildRequest struct {
 	DatasetID string            `json:"datasetId"`
+	Headers   []string          `json:"headers,omitempty"`
+	Rows      [][]string        `json:"rows,omitempty"`
 	Config    model.GanttConfig `json:"config"`
 }
 
@@ -530,21 +596,32 @@ func (ah *AnalyticsHandler) BuildGanttHandler(w http.ResponseWriter, r *http.Req
 		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求解析失败"})
 		return
 	}
-	if strings.TrimSpace(req.DatasetID) == "" {
-		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "缺少 datasetId"})
-		return
-	}
-
-	ds, ok := dataset.Load(req.DatasetID)
-	if !ok {
-		jsonResp(w, http.StatusNotFound, map[string]string{"error": "dataset 不存在"})
-		return
-	}
-
-	result, err := gantt.Build(ds, req.Config)
-	if err != nil {
-		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
-		return
+	// Allow either an inline set of rows + headers or a stored dataset id.
+	var result *gantt.Result
+	if len(req.Rows) > 0 {
+		ds := model.Dataset{Headers: req.Headers, Rows: req.Rows}
+		var err error
+		result, err = gantt.Build(ds, req.Config)
+		if err != nil {
+			jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+	} else {
+		if strings.TrimSpace(req.DatasetID) == "" {
+			jsonResp(w, http.StatusBadRequest, map[string]string{"error": "缺少 datasetId 或 rows"})
+			return
+		}
+		ds, ok := dataset.Load(req.DatasetID)
+		if !ok {
+			jsonResp(w, http.StatusNotFound, map[string]string{"error": "dataset 不存在"})
+			return
+		}
+		var err error
+		result, err = gantt.Build(ds, req.Config)
+		if err != nil {
+			jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 
 	jsonResp(w, http.StatusOK, map[string]any{"gantt": result})

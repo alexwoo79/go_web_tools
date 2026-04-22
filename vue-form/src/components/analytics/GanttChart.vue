@@ -137,7 +137,7 @@ function formatTimelineLabel(ts: number, gran: string) {
   return `${y}-${m}`
 }
 
-function buildGanttDataViewTable(rows: any[]): string {
+function buildGanttDataViewTable(rows: any[], showDesc = true): string {
   const esc = (v: any) => String(v == null ? '' : v)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -157,12 +157,19 @@ function buildGanttDataViewTable(rows: any[]): string {
     return new Date(n).toLocaleDateString()
   }
 
-  const body = rows
-    .filter(r => r.rowType === 'task')
-    .map(r => `<tr><td>${esc(r.project)}</td><td>${esc(r.task)}</td><td>${esc(fmt(r.start))}</td><td>${esc(fmt(r.end))}</td><td>${esc(r.duration)}</td><td>${esc(r.description || '')}</td></tr>`)
+  const rowsFiltered = rows.filter(r => r.rowType === 'task')
+  const body = rowsFiltered
+    .map(r => {
+      const cols = [esc(r.project), esc(r.task), esc(fmt(r.start)), esc(fmt(r.end)), esc(r.duration)]
+      if (showDesc) cols.push(esc(r.description || ''))
+      return `<tr><td>${cols.join('</td><td>')}</td></tr>`
+    })
     .join('')
 
-  return `${style}<div class="dv-wrap"><table class="dv-table"><thead><tr><th>项目</th><th>任务</th><th>开始</th><th>结束</th><th>周期(天)</th><th>描述</th></tr></thead><tbody>${body}</tbody></table></div>`
+  const headCols = ['项目', '任务', '开始', '结束', '周期(天)']
+  if (showDesc) headCols.push('描述')
+
+  return `${style}<div class="dv-wrap"><table class="dv-table"><thead><tr><th>${headCols.join('</th><th>')}</th></tr></thead><tbody>${body}</tbody></table></div>`
 }
 
 // ── bar geometry helpers (matches reference) ──────────────────
@@ -425,7 +432,8 @@ function buildOption(tasks: GanttTask[], themeName?: string, opts?: GanttOptions
     }
     const v = p.value
     const showDur = opts?.showDuration !== false
-    return `${v[5]}<br/>项目: ${v[4]}<br/>开始: ${new Date(v[1]).toLocaleDateString()}<br/>结束: ${new Date(v[2]).toLocaleDateString()}${showDur ? '<br/>周期(天): ' + v[7] : ''}${v[8] ? '<br/>' + v[8] : ''}`
+    const showDesc = opts?.showTaskDetails !== false
+    return `${v[5]}<br/>项目: ${v[4]}<br/>开始: ${new Date(v[1]).toLocaleDateString()}<br/>结束: ${new Date(v[2]).toLocaleDateString()}${showDur ? '<br/>周期(天): ' + v[7] : ''}${showDesc && v[8] ? '<br/>' + v[8] : ''}`
   }
 
   const series: any[] = [
@@ -509,7 +517,7 @@ function buildOption(tasks: GanttTask[], themeName?: string, opts?: GanttOptions
           title: '数据视图',
           lang: ['数据视图', '关闭', '刷新'],
           readOnly: true,
-          optionToContent: () => buildGanttDataViewTable(rows),
+          optionToContent: () => buildGanttDataViewTable(rows, opts?.showTaskDetails !== false),
         },
         saveAsImage: { title: '下载 PNG', name: 'gantt', pixelRatio: 2, backgroundColor: canvasBg }
       }
@@ -716,6 +724,7 @@ watch([chartOption, () => props.theme], () => {
     <div class="gantt-stats" v-if="stats">
       <span class="stat-item">任务数：<b>{{ stats.taskCount }}</b></span>
       <span class="stat-item">平均工期：<b>{{ stats.avgDurationDays.toFixed(1) }} 天</b></span>
+      <span class="stat-item">总周期：<b>{{ stats.totalDurationDay }} 天</b></span>
       <span class="stat-item">最长工期：<b>{{ stats.maxDurationDay }} 天</b></span>
       <span v-if="stats.hasPlanTotalDuration" class="stat-item">
         计划总工期：<b>{{ stats.planTotalDurationDay }} 天</b>
