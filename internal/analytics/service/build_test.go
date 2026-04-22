@@ -4,20 +4,20 @@ import (
 	"testing"
 	"time"
 
-	_ "go-web/internal/analytics/viz"
 	"go-web/internal/analytics/dataset"
 	"go-web/internal/analytics/model"
 	"go-web/internal/analytics/service"
+	_ "go-web/internal/analytics/viz"
 )
 
 func storeDS(t *testing.T, id string, ownerID int) model.Dataset {
 	t.Helper()
 	now := time.Now().UTC()
 	ds := model.Dataset{
-		ID:      id,
-		OwnerID: ownerID,
-		Headers: []string{"month", "revenue"},
-		Rows:    [][]string{{"Jan", "100"}, {"Feb", "120"}},
+		ID:        id,
+		OwnerID:   ownerID,
+		Headers:   []string{"month", "revenue"},
+		Rows:      [][]string{{"Jan", "100"}, {"Feb", "120"}},
 		CreatedAt: now,
 		ExpiresAt: now.Add(time.Hour),
 	}

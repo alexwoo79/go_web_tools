@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { AgGridVue } from 'ag-grid-vue3'
+import 'ag-grid-community/styles/ag-grid.css'
+import 'ag-grid-community/styles/ag-theme-alpine.css'
 import { useRoute, useRouter } from 'vue-router'
 import ChartCanvas from '@/components/analytics/ChartCanvas.vue'
 import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
@@ -73,7 +76,54 @@ const ganttOptions = ref<GanttOptions>({
   darkTheme: false,
   granularity: 'month',
 })
-const isGanttMode = ref(false)
+const chartMode = ref<'general' | 'gantt'>('general')
+const isGanttMode = computed(() => chartMode.value === 'gantt')
+
+// preview/edit state (form data)
+const previewDatasetId = ref<string | null>(null)
+const previewHeaders = ref<string[]>([])
+const previewRows = ref<string[][]>([])
+const isEditingPreview = ref(false)
+const editPreviewRows = ref<any[][]>([])
+
+// ag-grid state for form preview
+const gridApi = ref<any>(null)
+const gridColumnDefs = ref<any[]>([])
+const gridRowData = ref<any[]>([])
+
+function buildGridDefs(headers: string[]) {
+  return headers.map(h => ({ field: h, editable: true, resizable: true }))
+}
+
+function refreshGrid() {
+  gridColumnDefs.value = buildGridDefs(previewHeaders.value)
+  gridRowData.value = previewRows.value.map(r => {
+    const obj: Record<string, any> = {}
+    previewHeaders.value.forEach((h, i) => { obj[h] = r[i] ?? '' })
+    return obj
+  })
+}
+
+watch([previewHeaders, previewRows], refreshGrid, { immediate: true })
+
+function onGridReady(params: any) {
+  gridApi.value = params.api
+}
+
+function onCellValueChanged(e: any) {
+  const rowIndex = e.rowIndex
+  const colId = e.colDef?.field
+  const colIndex = previewHeaders.value.indexOf(colId)
+  if (colIndex >= 0) {
+    if (!editPreviewRows.value[rowIndex]) editPreviewRows.value[rowIndex] = []
+    editPreviewRows.value[rowIndex][colIndex] = e.newValue
+  }
+}
+
+watch(chartMode, () => {
+  chartOption.value = null
+  ganttData.value = null
+})
 
 const building = ref(false)
 const buildError = ref('')
@@ -165,6 +215,61 @@ function toLegacyConfig(v2: Record<string, any>): Record<string, string> {
   return out
 }
 
+async function loadFormPreview() {
+  loading.value = true
+  error.value = ''
+  try {
+    const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/preview`, { credentials: 'include' })
+    if (!res.ok) throw new Error((await res.text()) || `加载预览失败 (${res.status})`)
+    const payload = await res.json()
+    previewDatasetId.value = payload.id
+    previewHeaders.value = Array.isArray(payload.headers) ? payload.headers : []
+    previewRows.value = Array.isArray(payload.preview) ? payload.preview : []
+  } catch (e: any) {
+    error.value = e?.message ?? '加载预览失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+function onEditPreview() {
+  if (!previewRows.value) return
+  editPreviewRows.value = previewRows.value.map(r => [...r])
+  isEditingPreview.value = true
+  refreshGrid()
+}
+
+function onCancelEditPreview() {
+  isEditingPreview.value = false
+  editPreviewRows.value = []
+}
+
+async function onSaveEditPreview() {
+  if (!previewDatasetId.value || editPreviewRows.value.length === 0) {
+    isEditingPreview.value = false
+    editPreviewRows.value = []
+    return
+  }
+  try {
+    const res = await fetch(`/api/admin/analytics/datasets/${encodeURIComponent(previewDatasetId.value)}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: editPreviewRows.value })
+    })
+    if (!res.ok) throw new Error((await res.text()) || `保存失败 (${res.status})`)
+    const payload = await res.json()
+    previewRows.value = editPreviewRows.value.map(r => [...r])
+    isEditingPreview.value = false
+    editPreviewRows.value = []
+    if (payload.rowCount) {
+      // no-op, just keep metadata if needed
+    }
+  } catch (e: any) {
+    error.value = e?.message ?? '保存失败'
+  }
+}
+
 async function fetchSchema() {
   loading.value = true
   error.value = ''
@@ -235,18 +340,35 @@ async function buildFromForm() {
         }
       })
 
-      const body = {
-        chartKind: chartKind.value,
-        config: toLegacyConfig(mergedV2Config),
-        fields: Array.from(selectedFields)
+      // If we have a preview dataset loaded (and possibly edited), build from that dataset
+      let res: Response
+      if (previewDatasetId.value) {
+        const body = {
+          datasetId: previewDatasetId.value,
+          chartKind: chartKind.value,
+          schemaVersion: 2,
+          configV2: mergedV2Config,
+          config: toLegacyConfig(mergedV2Config),
+        }
+        res = await fetch('/api/admin/analytics/build', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+      } else {
+        const body = {
+          chartKind: chartKind.value,
+          config: toLegacyConfig(mergedV2Config),
+          fields: Array.from(selectedFields)
+        }
+        res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/build`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
       }
-
-      const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/build`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
       if (!res.ok) {
         let msg = `构建失败 (${res.status})`
         try {
@@ -305,12 +427,18 @@ onMounted(fetchSchema)
       <section class="fa-left">
         <div class="panel">
           <h3>图表配置</h3>
-          <label class="gantt-toggle">
-            <input type="checkbox" v-model="isGanttMode" @change="() => { chartOption = null; ganttData = null }" />
-            &nbsp;甘特图模式
-          </label>
+          <div class="gantt-toggle">
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="general" />
+              &nbsp;通用图形
+            </label>
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="gantt" />
+              &nbsp;甘特图
+            </label>
+          </div>
           <ChartOptionsPanel
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :definitions="definitions"
             v-model="chartKind"
             v-model:title="chartTitle"
@@ -321,8 +449,14 @@ onMounted(fetchSchema)
 
         <div class="panel">
           <h3>字段映射</h3>
+          <div style="margin-top:8px; margin-bottom:8px; display:flex; gap:8px; align-items:center;">
+            <button class="btn-load-demo" @click="loadFormPreview">加载预览</button>
+            <button v-if="previewDatasetId && !isEditingPreview" class="btn-edit" @click="onEditPreview">编辑预览</button>
+            <button v-if="isEditingPreview" class="btn-save" @click="onSaveEditPreview">保存预览</button>
+            <button v-if="isEditingPreview" class="btn-cancel" @click="onCancelEditPreview">取消</button>
+          </div>
           <FieldMapper
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :headers="headers"
             :chart-kind="chartKind"
             :definitions="definitions"
@@ -357,6 +491,30 @@ onMounted(fetchSchema)
           </div>
         </div>
 
+        <div v-if="previewHeaders.length" class="panel">
+          <h3>数据预览</h3>
+          <div v-if="!isEditingPreview">
+            <table class="preview-table">
+              <thead><tr><th v-for="h in previewHeaders" :key="h">{{ h }}</th></tr></thead>
+              <tbody>
+                <tr v-for="(row, i) in previewRows" :key="i">
+                  <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="ag-theme-alpine" style="width:100%; height:260px;">
+            <AgGridVue
+              class="ag-grid"
+              style="width:100%; height:100%;"
+              :columnDefs="gridColumnDefs"
+              :rowData="gridRowData"
+              @grid-ready="onGridReady"
+              @cell-value-changed="onCellValueChanged"
+            />
+          </div>
+        </div>
+
         <div class="panel">
           <p v-if="buildError" class="error-text">{{ buildError }}</p>
           <div class="actions">
@@ -370,9 +528,9 @@ onMounted(fetchSchema)
 
       <section class="fa-right">
         <div v-if="!chartOption && !ganttData && !building" class="placeholder">选择映射后点击「生成图表」</div>
-        <ChartToolbar
-          v-else
-          :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
+          <ChartToolbar
+            v-else
+            :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
           v-model:theme="toolbarTheme"
         >
           <GanttChart
@@ -384,7 +542,7 @@ onMounted(fetchSchema)
             :options="ganttOptions"
           />
           <ChartCanvas
-            v-else-if="!isGanttMode"
+            v-else-if="chartMode === 'general'"
             ref="chartRef"
             :option="chartOption"
             :loading="building"

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { AgGridVue } from 'ag-grid-vue3'
+import 'ag-grid-community/styles/ag-grid.css'
+import 'ag-grid-community/styles/ag-theme-alpine.css'
 import { useRouter } from 'vue-router'
 import DatasetUpload from '@/components/analytics/DatasetUpload.vue'
 import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
@@ -76,9 +79,13 @@ const ganttData = ref<{ tasks: GanttTask[]; stats: GanttStats } | null>(null)
 const chartRef = ref<InstanceType<typeof ChartCanvas>>()
 const ganttRef = ref<InstanceType<typeof GanttChart>>()
 
-const isGanttMode = ref(false)
+// chartMode: 'general' = 通用图形, 'gantt' = 甘特图
+const chartMode = ref<'general' | 'gantt'>('general')
+const isGanttMode = computed(() => chartMode.value === 'gantt')
 const activeTab = ref<'step1' | 'step2' | 'step3'>('step1')
 const previewCollapsed = ref(false)
+const isEditingPreview = ref(false)
+const editPreviewRows = ref<any[][]>([])
 const demoLoading = ref(false)
 const demoError = ref('')
 const autoLoadDemo = ref(false)
@@ -99,20 +106,14 @@ const demoHintText = computed(() => {
 })
 
 // When isGanttMode changes, set chartKind appropriately
-function toggleGanttMode(val: boolean) {
-  isGanttMode.value = val
-  if (val) {
+watch(chartMode, (mode) => {
+  if (mode === 'gantt') {
     chartKind.value = 'gantt'
   } else {
     chartKind.value = definitions.value[0]?.kind ?? ''
   }
   chartOption.value = null
   ganttData.value = null
-}
-
-const isGanttModeModel = computed({
-  get: () => isGanttMode.value,
-  set: (v) => toggleGanttMode(v)
 })
 
 const step = computed(() => {
@@ -174,7 +175,100 @@ function sanitizeYSeriesConfig(kind: string, config: Record<string, any>): Recor
 }
 
 const previewHeaders = computed(() => dataset.value?.headers ?? [])
-const previewRows = computed(() => dataset.value?.preview ?? [])
+const previewRows = computed(() => {
+  if (isEditingPreview.value) return editPreviewRows.value
+  return dataset.value?.preview ?? []
+})
+
+// ag-grid state
+const gridApi = ref<any>(null)
+const gridColumnDefs = ref<any[]>([])
+const gridRowData = ref<any[]>([])
+
+function buildGridDefs(headers: string[]) {
+  return headers.map(h => ({ field: h, editable: true, resizable: true }))
+}
+
+function refreshGrid() {
+  gridColumnDefs.value = buildGridDefs(previewHeaders.value)
+  gridRowData.value = previewRows.value.map(r => {
+    const obj: Record<string, any> = {}
+    previewHeaders.value.forEach((h, i) => { obj[h] = r[i] ?? '' })
+    return obj
+  })
+}
+
+watch([previewHeaders, previewRows], refreshGrid, { immediate: true })
+function onEditPreview() {
+  if (!dataset.value?.preview) return
+  // 深拷贝，避免直接修改原数据
+  editPreviewRows.value = dataset.value.preview.map(row => [...row])
+  isEditingPreview.value = true
+  // initialize ag-grid
+  refreshGrid()
+}
+
+function onGridReady(params: any) {
+  gridApi.value = params.api
+}
+
+function onCellValueChanged(e: any) {
+  // Reflect changes back into editPreviewRows based on header order
+  const rowIndex = e.rowIndex
+  const colId = e.colDef?.field
+  const colIndex = previewHeaders.value.indexOf(colId)
+  if (colIndex >= 0) {
+    if (!editPreviewRows.value[rowIndex]) editPreviewRows.value[rowIndex] = []
+    editPreviewRows.value[rowIndex][colIndex] = e.newValue
+  }
+}
+
+function onCancelEditPreview() {
+  isEditingPreview.value = false
+  editPreviewRows.value = []
+}
+
+async function onSaveEditPreview() {
+  if (dataset.value && editPreviewRows.value.length) {
+    // If this dataset is persisted on the server, update it there so builds use the edits.
+    if (dataset.value.id) {
+      try {
+        const res = await fetch(`/api/admin/analytics/datasets/${encodeURIComponent(dataset.value.id)}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: editPreviewRows.value })
+        })
+        if (!res.ok) {
+          const msg = await res.text()
+          throw new Error(msg || `更新数据失败 (${res.status})`)
+        }
+        const payload = await res.json()
+        dataset.value.preview = editPreviewRows.value.map(row => [...row])
+        if (typeof payload.rowCount === 'number') dataset.value.rowCount = payload.rowCount
+      } catch (e: any) {
+        // Surface error to user briefly
+        // eslint-disable-next-line no-console
+        console.error('保存数据预览失败', e)
+        alert(e?.message || '保存数据失败')
+      }
+    } else {
+      // local-only dataset, just update preview
+      dataset.value.preview = editPreviewRows.value.map(row => [...row])
+    }
+  }
+  isEditingPreview.value = false
+  editPreviewRows.value = []
+}
+
+function getEditCell(i: number, j: number) {
+  return (editPreviewRows.value[i] && editPreviewRows.value[i][j]) ?? ''
+}
+
+function setEditCell(i: number, j: number, v: any) {
+  if (!editPreviewRows.value[i]) editPreviewRows.value[i] = []
+  editPreviewRows.value[i][j] = v
+}
 const chartTheme = computed(() => String(optionConfig.value.theme || chartOption.value?.theme || 'default'))
 const toolbarTheme = computed({
   get: () => chartTheme.value,
@@ -364,12 +458,12 @@ function onUploaded(payload: UploadedDataset) {
   ganttData.value = null
 }
 
-watch([dataset, chartKind, isGanttMode], () => {
+watch([dataset, chartKind, chartMode], () => {
   applyAutoMappingForCurrentChart()
 })
 
 watch(chartKind, async (kind) => {
-  if (!kind || isGanttMode.value || !autoLoadDemo.value) return
+  if (!kind || chartMode.value === 'gantt' || !autoLoadDemo.value) return
   const preset = getAnalyticsDemoPreset(kind)
   if (demoDatasetLoaded.value && dataset.value && preset.key === activeDemoPresetKey.value) {
     applyAutoMappingForCurrentChart()
@@ -410,7 +504,7 @@ async function build() {
   chartOption.value = null
   ganttData.value = null
   try {
-    if (isGanttMode.value) {
+    if (chartMode.value === 'gantt') {
       const body = { datasetId: dataset.value.id, config: ganttConfig.value }
       const res = await fetch('/api/admin/analytics/gantt/build', {
         method: 'POST',
@@ -543,13 +637,17 @@ function reset() {
 
         <div v-else-if="activeTab === 'step2'" class="wb-section" :class="{ disabled: step < 2, done: step > 2 }">
           <div class="gantt-toggle">
-            <label>
-              <input type="checkbox" v-model="isGanttModeModel" />
-              &nbsp;甘特图模式
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="general" />
+              &nbsp;通用图形
+            </label>
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="gantt" />
+              &nbsp;甘特图
             </label>
           </div>
           <ChartOptionsPanel
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :definitions="definitions"
             v-model="chartKind"
             v-model:title="chartTitle"
@@ -562,7 +660,7 @@ function reset() {
         <div v-else-if="activeTab === 'step3'" class="wb-section" :class="{ disabled: step < 3, done: step > 2 }">
           <!-- Regular chart field mapper -->
           <FieldMapper
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :headers="dataset?.headers ?? []"
             :chart-kind="chartKind"
             :definitions="definitions"
@@ -624,23 +722,40 @@ function reset() {
               <div class="preview-title">数据预览</div>
               <div class="preview-sub">展示前 {{ previewRows.length }} 行，共 {{ dataset.rowCount }} 行</div>
             </div>
-            <button class="btn-fold" @click="previewCollapsed = !previewCollapsed">
-              {{ previewCollapsed ? '展开' : '收起' }}
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button v-if="!isEditingPreview" class="btn-edit" @click="onEditPreview">编辑</button>
+              <button v-if="isEditingPreview" class="btn-save" @click="onSaveEditPreview">保存</button>
+              <button v-if="isEditingPreview" class="btn-cancel" @click="onCancelEditPreview">取消</button>
+              <button class="btn-fold" @click="previewCollapsed = !previewCollapsed">
+                {{ previewCollapsed ? '展开' : '收起' }}
+              </button>
+            </div>
           </div>
           <div v-if="!previewCollapsed" class="preview-table-wrap">
-            <table class="preview-table">
-              <thead>
-                <tr>
-                  <th v-for="h in previewHeaders" :key="h">{{ h }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, i) in previewRows" :key="i">
-                  <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div v-if="!isEditingPreview" class="simple-table-wrap">
+              <table class="preview-table">
+                <thead>
+                  <tr>
+                    <th v-for="h in previewHeaders" :key="h">{{ h }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, i) in previewRows" :key="i">
+                    <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="ag-theme-alpine" style="width:100%; height:300px;">
+              <AgGridVue
+                class="ag-grid"
+                style="width: 100%; height: 100%;"
+                :columnDefs="gridColumnDefs"
+                :rowData="gridRowData"
+                @grid-ready="onGridReady"
+                @cell-value-changed="onCellValueChanged"
+              />
+            </div>
           </div>
         </div>
         <div class="chart-stage">

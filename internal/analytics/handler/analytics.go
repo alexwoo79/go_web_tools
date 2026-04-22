@@ -133,6 +133,36 @@ func (ah *AnalyticsHandler) DeleteDatasetHandler(w http.ResponseWriter, r *http.
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// UpdateDatasetHandler handles PUT /api/admin/analytics/datasets/{id}
+func (ah *AnalyticsHandler) UpdateDatasetHandler(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	var body struct {
+		Rows [][]string `json:"rows"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败"})
+		return
+	}
+	ds, ok := dataset.Load(id)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "数据集不存在或已过期"})
+		return
+	}
+	if ds.OwnerID != ah.adminUserID(r) {
+		jsonResp(w, http.StatusForbidden, map[string]string{"error": "无权修改该数据集"})
+		return
+	}
+	if err := dataset.Update(id, ds.OwnerID, body.Rows); err != nil {
+		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	preview := body.Rows
+	if len(preview) > 5 {
+		preview = preview[:5]
+	}
+	jsonResp(w, http.StatusOK, map[string]any{"id": id, "preview": preview, "rowCount": len(body.Rows)})
+}
+
 // DefinitionsHandler handles GET /api/admin/analytics/definitions
 func (ah *AnalyticsHandler) DefinitionsHandler(w http.ResponseWriter, r *http.Request) {
 	jsonResp(w, http.StatusOK, viz.Definitions())
@@ -188,7 +218,6 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if req.Config != nil {
-		// Keep legacy keys compatible during migration.
 		if cfg.Title == "" {
 			cfg.Title = req.Config["title"]
 		}
@@ -370,6 +399,40 @@ func (ah *AnalyticsHandler) GetFormSchemaHandler(w http.ResponseWriter, r *http.
 		"fields":            fields,
 		"definitions":       viz.Definitions(),
 		"recommendedCharts": recommendChartKinds(fi.Fields),
+	})
+}
+
+// GetFormPreviewHandler handles GET /api/admin/analytics/forms/{formName}/preview
+func (ah *AnalyticsHandler) GetFormPreviewHandler(w http.ResponseWriter, r *http.Request) {
+	formName := mux.Vars(r)["formName"]
+	fi, ok := ah.primary.GetFormForAnalytics(formName)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "表单不存在"})
+		return
+	}
+
+	tableName := fi.Model.TableName
+	if tableName == "" {
+		tableName = "form_" + fi.Name
+	}
+
+	ownerID := ah.adminUserID(r)
+	ds, err := service.FromFormData(ah.primary.DBForAnalytics(), tableName, fi.Name, ownerID, nil)
+	if err != nil {
+		jsonAPIError(w, http.StatusUnprocessableEntity, model.ErrCodeBusinessNotFound, err.Error())
+		return
+	}
+
+	preview := ds.Rows
+	if len(preview) > 5 {
+		preview = preview[:5]
+	}
+
+	jsonResp(w, http.StatusOK, map[string]any{
+		"id":       ds.ID,
+		"headers":  ds.Headers,
+		"preview":  preview,
+		"rowCount": len(ds.Rows),
 	})
 }
 
@@ -609,11 +672,7 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 		}
 	}
 	if def == nil {
-		return []model.ValidationIssue{{
-			Field:   "chartKind",
-			Code:    model.ErrCodeValidationUnsupportedChart,
-			Message: "不支持的图形类型",
-		}}
+		return []model.ValidationIssue{{Field: "chartKind", Code: model.ErrCodeValidationUnsupportedChart, Message: "不支持的图形类型"}}
 	}
 
 	issues := make([]model.ValidationIssue, 0)
@@ -629,11 +688,7 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 			continue
 		}
 		seen[f.Key] = true
-		issues = append(issues, model.ValidationIssue{
-			Field:   f.Key,
-			Code:    model.ErrCodeValidationRequiredField,
-			Message: f.Label + " 不能为空",
-		})
+		issues = append(issues, model.ValidationIssue{Field: f.Key, Code: model.ErrCodeValidationRequiredField, Message: f.Label + " 不能为空"})
 	}
 	return issues
 }
@@ -738,6 +793,9 @@ func jsonResp(w http.ResponseWriter, status int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-func jsonAPIError(w http.ResponseWriter, status int, code, message string) {
-	jsonResp(w, status, model.APIErrorResponse{Code: code, Error: message})
+// jsonAPIError writes a structured API error response using model.APIErrorResponse.
+func jsonAPIError(w http.ResponseWriter, status int, code string, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(model.APIErrorResponse{Code: code, Error: msg})
 }

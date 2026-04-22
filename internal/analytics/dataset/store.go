@@ -82,6 +82,24 @@ func Delete(id string) {
 	store.mu.Unlock()
 }
 
+// Update replaces the rows of an existing dataset if the owner matches.
+// Returns error when the dataset does not exist or the owner is not allowed.
+func Update(id string, ownerID int, rows [][]string) error {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	e, ok := store.m[id]
+	if !ok {
+		return fmt.Errorf("数据集不存在")
+	}
+	if e.dataset.OwnerID != ownerID {
+		return fmt.Errorf("无权修改该数据集")
+	}
+	e.dataset.Rows = rows
+	// Keep preview as first 5 rows; headers remain unchanged.
+	store.m[id] = e
+	return nil
+}
+
 // runGC periodically removes expired datasets.
 func (s *datasetStore) runGC() {
 	ticker := time.NewTicker(gcInterval)
