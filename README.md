@@ -246,3 +246,24 @@ make web
 ```
 
 更多高级打包/部署说明参考上文的“构建项目”与 Docker 小节。
+
+## 发布（Release）
+
+- 脚本 `release.sh` 会优先使用 `gh`（GitHub CLI）创建 Release 并上传 `./bin/*`。如果系统上未安装 `gh`，脚本会回退到使用 GitHub Releases API 上传，此时必须在环境变量中提供 `GITHUB_TOKEN`（拥有 `repo` 权限）。
+
+- 使用示例：
+
+```bash
+export GITHUB_TOKEN=ghp_xxx
+./release.sh
+```
+
+- 在 macOS 上安装 GitHub CLI：
+
+```bash
+brew install gh
+gh auth login
+```
+
+- 注意：确保 `GITHUB_TOKEN` 的权限包含 `repo`（用于创建 Release 和上传资产）。
+

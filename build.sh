@@ -32,6 +32,33 @@ build_windows() {
 	echo "Build complete: $ROOT_DIR/bin/go-web.exe"
 }
 
+build_multi() {
+	echo "[3/3] Building cross-platform binaries (amd64/arm64)..."
+	cd "$ROOT_DIR"
+	mkdir -p bin
+
+	targets=(
+		"linux amd64"
+		"linux arm64"
+		"darwin amd64"
+		"darwin arm64"
+		"windows amd64"
+	)
+
+	for t in "${targets[@]}"; do
+		read -r os arch <<<"$t"
+		outfile="bin/go-web-${os}-${arch}"
+		ext=""
+		if [ "$os" = "windows" ]; then
+			ext=".exe"
+		fi
+		echo "Building $os/$arch -> ${outfile}${ext}"
+		CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -o "${outfile}${ext}" ./cmd/server
+	done
+
+	echo "Cross build complete: $ROOT_DIR/bin/"
+}
+
 if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
 	echo "[1/3] Installing Vue frontend dependencies..."
 	cd "$FRONTEND_DIR"
@@ -54,8 +81,7 @@ case "$TARGET" in
 		build_windows
 		;;
 	all)
-		build_native
-		build_windows
+		build_multi
 		;;
 	-h|--help|help)
 		usage
