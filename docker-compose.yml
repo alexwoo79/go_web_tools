@@ -1,0 +1,25 @@
+version: '3.8'
+services:
+  go-server:
+    build: ./go-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/uploads:/data/uploads
+    environment:
+      - STORAGE_PATH=/data/uploads
+
+  shiny-plumber:
+    image: rocker/shiny:4.2.3
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ops/shiny:/srv/shiny
+      - ./data/uploads:/data/uploads
+    command: >
+      R -e "install.packages(c('plumber','jsonlite'), repos='https://cran.rstudio.com')" -e "pr <- plumber::plumb('/srv/shiny/plumber.R'); pr$run(host='0.0.0.0', port=8000)"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
