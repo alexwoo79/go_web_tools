@@ -1,0 +1,8 @@
+bin
+.git
+*.tar
+*.bundle
+data
+node_modules
+**/node_modules
+*.log
