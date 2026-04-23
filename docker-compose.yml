@@ -8,18 +8,17 @@ services:
     environment:
       - STORAGE_PATH=/data/uploads
 
-  shiny-py:
-    build: ./ops/shiny_py
-    ports:
-      - "8000:8000"
-      - "3838:8001"
-    volumes:
-      - ./ops/shiny_py:/srv/shiny_py
-      - ./data/uploads:/data/uploads
-    environment:
-      - PYTHONUNBUFFERED=1
-
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+
+  bi:
+    build: ./ops/bi
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./ops/bi:/srv/bi
+      - ./data/uploads:/data/uploads
+    environment:
+      - PYTHONUNBUFFERED=1
