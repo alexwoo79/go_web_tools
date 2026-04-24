@@ -1,9 +1,8 @@
 from core.data_loader import load_file
-from core.pivot_engine import run_pivot
 from core.chart_engine import render_chart
 import altair as alt
-def load_data(file):
-    return load_file(file)
+def load_data(file, **kwargs):
+    return load_file(file, **kwargs)
 
 def get_columns(df):
     return df.columns.tolist()
@@ -52,26 +51,7 @@ def swap_xy(x, y, swap):
         return y, x
     return x, y
 
-def run_pivot_analysis(df, rows, columns, values, agg):
-    pivot_df = run_pivot(
-        df,
-        rows,
-        columns,
-        values if values else None,
-        agg
-    )
-    return pivot_df
 
-def get_pivot_chart(pivot_df, rows, columns):
-    if not (rows and columns):
-        return None
-    melt_df = pivot_df.melt(id_vars=rows)
-    chart = alt.Chart(melt_df).mark_rect().encode(
-        x=columns[0],
-        y=rows[0],
-        color="value:Q"
-    )
-    return chart
 
 def render_main_chart(chart_type, df_plot, cfg):
     return render_chart(chart_type, df_plot, cfg)
