@@ -11,3 +11,17 @@ services:
       - ./data:/app/data
     command: [ "./bin/go-web", "--config", "./bin/config.yaml" ]
     restart: unless-stopped
+  bi:
+    build:
+      context: ./bi
+      dockerfile: Dockerfile
+    image: go_form_bi:local
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./bi:/app:rw
+      - ./data:/app/data:rw
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: [ "streamlit", "run", "app.py", "--server.port", "8501", "--server.address", "0.0.0.0" ]
+    restart: unless-stopped
