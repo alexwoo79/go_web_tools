@@ -44,7 +44,6 @@ duckdb = { version = "1", features = ["bundled"] }
 polars = { version = "0.46", features = [
     "lazy",
     "csv",
-    "xlsx2csv",
     "dtype-date",
     "dtype-datetime",
     "dtype-duration",

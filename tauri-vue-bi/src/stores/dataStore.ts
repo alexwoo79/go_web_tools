@@ -21,23 +21,37 @@ export const useDataStore = defineStore('data', () => {
   const columnNames = computed<string[]>(() => columns.value.map((c) => c.name))
 
   // 数值列（用于图表 Y 轴等）
+  // Polars dtype format strings: "Int32", "Float64", "UInt8", etc.
+  const NUMERIC_DTYPES = new Set([
+    'Int8', 'Int16', 'Int32', 'Int64',
+    'UInt8', 'UInt16', 'UInt32', 'UInt64',
+    'Float32', 'Float64',
+  ])
   const numericColumns = computed<string[]>(() =>
     columns.value
-      .filter((c) => ['Int8','Int16','Int32','Int64','UInt8','UInt16','UInt32','UInt64','Float32','Float64'].some(t => c.dtype.includes(t)))
+      .filter((c) => NUMERIC_DTYPES.has(c.dtype))
       .map((c) => c.name)
   )
 
   // 字符串/分类列
+  // Polars formats these as "String", "Utf8", "Categorical", "Boolean"
+  const CATEGORICAL_DTYPES = new Set(['String', 'Utf8', 'Categorical', 'Boolean'])
   const categoricalColumns = computed<string[]>(() =>
     columns.value
-      .filter((c) => c.dtype.includes('Str') || c.dtype.includes('Categorical') || c.dtype.includes('Boolean'))
+      .filter((c) => CATEGORICAL_DTYPES.has(c.dtype))
       .map((c) => c.name)
   )
 
   // 日期/时间列
+  // Polars formats these as "Date", "Datetime(...)", "Duration(...)", "Time"
   const dateColumns = computed<string[]>(() =>
     columns.value
-      .filter((c) => c.dtype.includes('Date') || c.dtype.includes('Time') || c.dtype.includes('Duration'))
+      .filter((c) =>
+        c.dtype === 'Date' ||
+        c.dtype === 'Time' ||
+        c.dtype.startsWith('Datetime') ||
+        c.dtype.startsWith('Duration')
+      )
       .map((c) => c.name)
   )
 

@@ -55,13 +55,15 @@ pub fn load_file_impl(
                 .context("Failed to parse CSV")?
         }
         "xlsx" | "xls" | "xlsm" => {
-            // xlsx2csv feature converts Excel to CSV under the hood.
-            let xlsx_bytes = std::fs::read(p).context("Failed to read Excel file")?;
-            let cursor = std::io::Cursor::new(xlsx_bytes);
-            xlsx2csv::XlsxToCsvReader::new(cursor)
-                .context("Failed to open Excel workbook")?
-                .into_polars_df()
-                .context("Failed to convert Excel to DataFrame")?
+            // NOTE: Full Excel reading requires the `calamine` crate (not yet bundled).
+            // To add real support, add `calamine = "0.25"` to Cargo.toml and
+            // implement a sheet→DataFrame converter using calamine's Reader trait.
+            bail!(
+                "Excel file detected ('{}').\n\
+                Direct Excel reading is not yet enabled in this build.\n\
+                Please convert your file to CSV format first and re-upload it.",
+                path
+            );
         }
         other => bail!("Unsupported file extension: .{other}"),
     };
@@ -367,37 +369,20 @@ pub fn groupby_agg_impl(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// xlsx2csv shim — only needed because Polars xlsx2csv feature exposes a
-// different API depending on version. This adapter handles the conversion.
+// NOTE: Excel reading
+//
+// Full Excel (.xlsx / .xls / .xlsm) reading is not yet enabled in this build.
+// The `xlsx2csv` Polars feature converts sheets to CSV in-memory, but the
+// exact stable API differs across Polars minor versions.
+//
+// To add real Excel support, integrate the `calamine` crate:
+//   1. Add `calamine = "0.25"` to Cargo.toml.
+//   2. Read the workbook with `calamine::open_workbook::<Xlsx, _>(path)`.
+//   3. Convert each row to a Polars Series and build a DataFrame.
+//
+// Until then, the `load_file_impl` function returns a descriptive error for
+// Excel files, asking the user to convert to CSV first.
 // ─────────────────────────────────────────────────────────────────────────────
-
-mod xlsx2csv {
-    use anyhow::{Context, Result};
-    use polars::prelude::*;
-    use std::io::Read;
-
-    pub struct XlsxToCsvReader<R: Read + std::io::Seek> {
-        // Store raw bytes so we can try multiple sheet indices
-        bytes: Vec<u8>,
-        _phantom: std::marker::PhantomData<R>,
-    }
-
-    impl<R: Read + std::io::Seek> XlsxToCsvReader<R> {
-        pub fn new(mut reader: R) -> Result<Self> {
-            let mut bytes = Vec::new();
-            reader.read_to_end(&mut bytes).context("read xlsx bytes")?;
-            Ok(Self { bytes, _phantom: std::marker::PhantomData })
-        }
-
-        pub fn into_polars_df(self) -> Result<DataFrame> {
-            // Use Polars' built-in xlsx reader (requires the xlsx2csv feature).
-            let cursor = std::io::Cursor::new(self.bytes);
-            IpcReader::new(cursor)
-                .finish()
-                .map_err(|_| anyhow::anyhow!("Excel reading not yet supported in this build; please convert to CSV first."))
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Escape helper (used in non-regex find/replace)
