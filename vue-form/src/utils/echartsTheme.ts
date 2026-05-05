@@ -14,6 +14,11 @@ export interface EChartsThemeProfile {
     isDark: boolean
 }
 
+export interface EChartsThemeOption {
+    label: string
+    value: string
+}
+
 const PROFILES: Record<string, Partial<EChartsThemeProfile>> = {
     default: {
         palette: ['#c23531', '#2f4554', '#61a0a8', '#d48265', '#91c7ae', '#749f83', '#ca8622', '#bda29a', '#6e7074', '#546570', '#c4ccd3'],
@@ -96,6 +101,23 @@ const PROFILES: Record<string, Partial<EChartsThemeProfile>> = {
 }
 
 const RUNTIME_REGISTERED_THEMES = new Set(['dark', 'vintage', 'macarons', 'shine', 'roma', 'infographic'])
+
+export const ECHARTS_THEME_OPTIONS: EChartsThemeOption[] = [
+    { label: '默认主题', value: 'default' },
+    { label: 'Dark', value: 'dark' },
+    { label: 'Vintage', value: 'vintage' },
+    { label: 'Westeros', value: 'westeros' },
+    { label: 'Essos', value: 'essos' },
+    { label: 'Wonderland', value: 'wonderland' },
+    { label: 'Walden', value: 'walden' },
+    { label: 'Chalk', value: 'chalk' },
+    { label: 'Infographic', value: 'infographic' },
+    { label: 'Macarons', value: 'macarons' },
+    { label: 'Roma', value: 'roma' },
+    { label: 'Shine', value: 'shine' },
+    { label: 'Purple Passion', value: 'purple-passion' },
+    { label: 'Halloween', value: 'halloween' },
+]
 
 export function normalizeThemeName(themeName: string | null | undefined): string {
     const normalized = String(themeName ?? 'default').trim().toLowerCase()

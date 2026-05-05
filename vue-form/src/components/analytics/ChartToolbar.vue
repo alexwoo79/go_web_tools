@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { ECHARTS_THEME_OPTIONS } from '@/utils/echartsTheme'
 
 interface ThemeOption {
   label: string
@@ -23,15 +24,7 @@ const emit = defineEmits<{
   (e: 'update:theme', value: string): void
 }>()
 
-const defaultThemeOptions: ThemeOption[] = [
-  { label: '默认主题', value: 'default' },
-  { label: 'Dark', value: 'dark' },
-  { label: 'Vintage', value: 'vintage' },
-  { label: 'Macarons', value: 'macarons' },
-  { label: 'Shine', value: 'shine' },
-  { label: 'Roma', value: 'roma' },
-  { label: 'Infographic', value: 'infographic' },
-]
+const defaultThemeOptions: ThemeOption[] = ECHARTS_THEME_OPTIONS
 
 const copyMsg = ref('')
 

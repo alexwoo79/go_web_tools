@@ -194,6 +194,10 @@ function readableTextColor(bgHex: string, isDark: boolean) {
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
   return isDark ? (luminance < 145 ? '#f8fafc' : '#0f172a') : (luminance < 150 ? '#f8fafc' : '#0f172a')
 }
+
+function surfaceTextColor(isDark: boolean) {
+  return isDark ? '#e2e8f0' : '#334155'
+}
 function planStrokeTheme(isDark: boolean) {
   return isDark
     ? { outer: 'rgba(248,250,252,0.25)', inner: '#dbe7f3' }
@@ -342,7 +346,7 @@ function buildOption(tasks: GanttTask[], themeName?: string, opts?: GanttOptions
     const progress = Math.max(0, Math.min(1, Number(api.value(9)) || 0))
     const rowType = api.value(10)
     const radius = barRadiusForRow(rowType)
-    const detail = api.value(8) || ''
+    const detail = String(api.value(8) || '').trim()
     const progressWidth = Math.max(2, rect.width * progress)
     const barFill = api.value(3)
     const textColor = readableTextColor(barFill, dark)
@@ -361,17 +365,29 @@ function buildOption(tasks: GanttTask[], themeName?: string, opts?: GanttOptions
     ]
 
     const showDetail = opts?.showTaskDetails !== false
-    if (showDetail && rowType === 'task' && detail && rect.width > 36) {
+    if (showDetail && rowType === 'task' && detail) {
+      const renderInside = rect.width >= 84
+      const textX = renderInside ? rect.x + 6 : rect.x + rect.width + 8
+      const textWidth = renderInside
+        ? Math.max(24, rect.width - 12)
+        : Math.max(0, params.coordSys.x + params.coordSys.width - textX - 8)
+
+      if (textWidth >= 28) {
       children.push({
         type: 'text',
         style: {
-          x: rect.x + 6, y: rect.y + rect.height / 2,
-          text: detail, width: Math.max(24, rect.width - 12), overflow: 'truncate',
-          fill: textColor, fontSize: 12, fontWeight: 600,
-          textVerticalAlign: 'middle', textAlign: 'left'
+            x: textX, y: rect.y + rect.height / 2,
+            text: detail, width: textWidth, overflow: 'truncate',
+            fill: renderInside ? textColor : surfaceTextColor(dark),
+            fontSize: 12, fontWeight: 600,
+            textVerticalAlign: 'middle', textAlign: 'left',
+            backgroundColor: renderInside ? 'transparent' : (dark ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.88)'),
+            padding: renderInside ? 0 : [3, 6],
+            borderRadius: renderInside ? 0 : 8,
         },
         silent: true
       })
+      }
     }
     return { type: 'group', children }
   }
@@ -433,7 +449,7 @@ function buildOption(tasks: GanttTask[], themeName?: string, opts?: GanttOptions
     const v = p.value
     const showDur = opts?.showDuration !== false
     const showDesc = opts?.showTaskDetails !== false
-    return `${v[5]}<br/>项目: ${v[4]}<br/>开始: ${new Date(v[1]).toLocaleDateString()}<br/>结束: ${new Date(v[2]).toLocaleDateString()}${showDur ? '<br/>周期(天): ' + v[7] : ''}${showDesc && v[8] ? '<br/>' + v[8] : ''}`
+    return `${v[5]}<br/>项目: ${v[4]}<br/>开始: ${new Date(v[1]).toLocaleDateString()}<br/>结束: ${new Date(v[2]).toLocaleDateString()}${showDur ? '<br/>周期(天): ' + v[7] : ''}${showDesc && v[8] ? '<br/>描述: ' + v[8] : ''}`
   }
 
   const series: any[] = [

@@ -126,6 +126,139 @@ function normalizeTitle(rawTitle: any): Record<string, any> {
   }
 }
 
+function applyAxisTheme(axis: any, profile: ReturnType<typeof getThemeProfile>): any {
+  if (!axis) return axis
+  if (Array.isArray(axis)) return axis.map(item => applyAxisTheme(item, profile))
+  return {
+    ...axis,
+    axisLine: {
+      ...(axis.axisLine ?? {}),
+      lineStyle: {
+        color: axis.axisLine?.lineStyle?.color ?? profile.axisLineColor,
+        ...(axis.axisLine?.lineStyle ?? {}),
+      },
+    },
+    axisLabel: {
+      color: axis.axisLabel?.color ?? profile.axisLabelColor,
+      ...(axis.axisLabel ?? {}),
+    },
+    splitLine: {
+      ...(axis.splitLine ?? {}),
+      lineStyle: {
+        color: axis.splitLine?.lineStyle?.color ?? profile.splitLineColor,
+        ...(axis.splitLine?.lineStyle ?? {}),
+      },
+    },
+  }
+}
+
+function applyLegendTheme(legend: any, profile: ReturnType<typeof getThemeProfile>): any {
+  if (!legend) return legend
+  if (Array.isArray(legend)) return legend.map(item => applyLegendTheme(item, profile))
+  return {
+    ...legend,
+    textStyle: {
+      color: legend.textStyle?.color ?? profile.textColor,
+      ...(legend.textStyle ?? {}),
+    },
+  }
+}
+
+function applyTitleTheme(title: any, profile: ReturnType<typeof getThemeProfile>): any {
+  if (!title) return title
+  if (Array.isArray(title)) return title.map(item => applyTitleTheme(item, profile))
+  return {
+    ...title,
+    textStyle: {
+      color: title.textStyle?.color ?? profile.titleColor,
+      ...(title.textStyle ?? {}),
+    },
+    subtextStyle: {
+      color: title.subtextStyle?.color ?? profile.subtitleColor,
+      ...(title.subtextStyle ?? {}),
+    },
+  }
+}
+
+function applyThemeProfile(option: Record<string, any>, themeName: string | null | undefined): Record<string, any> {
+  const profile = getThemeProfile(themeName)
+  const darkSurface = profile.isDark ? 'rgba(17,24,39,0.94)' : 'rgba(255,255,255,0.96)'
+
+  return {
+    ...option,
+    color: option.color ?? profile.palette,
+    backgroundColor: option.backgroundColor ?? profile.backgroundColor,
+    textStyle: {
+      color: option.textStyle?.color ?? profile.textColor,
+      ...(option.textStyle ?? {}),
+    },
+    title: applyTitleTheme(option.title, profile),
+    legend: applyLegendTheme(option.legend, profile),
+    tooltip: option.tooltip
+      ? {
+          ...option.tooltip,
+          backgroundColor: option.tooltip.backgroundColor ?? darkSurface,
+          borderColor: option.tooltip.borderColor ?? profile.splitLineColor,
+          textStyle: {
+            color: option.tooltip.textStyle?.color ?? profile.textColor,
+            ...(option.tooltip.textStyle ?? {}),
+          },
+          axisPointer: option.tooltip.axisPointer
+            ? {
+                ...option.tooltip.axisPointer,
+                lineStyle: {
+                  color: option.tooltip.axisPointer.lineStyle?.color ?? profile.tooltipAxisColor,
+                  ...(option.tooltip.axisPointer.lineStyle ?? {}),
+                },
+              }
+            : option.tooltip.axisPointer,
+        }
+      : option.tooltip,
+    toolbox: option.toolbox
+      ? {
+          ...option.toolbox,
+          iconStyle: {
+            color: option.toolbox.iconStyle?.color ?? 'none',
+            borderColor: option.toolbox.iconStyle?.borderColor ?? profile.toolboxColor,
+            ...(option.toolbox.iconStyle ?? {}),
+          },
+          emphasis: {
+            ...(option.toolbox.emphasis ?? {}),
+            iconStyle: {
+              borderColor: option.toolbox.emphasis?.iconStyle?.borderColor ?? profile.toolboxEmphasisColor,
+              ...(option.toolbox.emphasis?.iconStyle ?? {}),
+            },
+          },
+        }
+      : option.toolbox,
+    xAxis: applyAxisTheme(option.xAxis, profile),
+    yAxis: applyAxisTheme(option.yAxis, profile),
+    radar: option.radar
+      ? {
+          ...option.radar,
+          axisName: {
+            color: option.radar.axisName?.color ?? profile.axisLabelColor,
+            ...(option.radar.axisName ?? {}),
+          },
+          axisLine: {
+            ...(option.radar.axisLine ?? {}),
+            lineStyle: {
+              color: option.radar.axisLine?.lineStyle?.color ?? profile.axisLineColor,
+              ...(option.radar.axisLine?.lineStyle ?? {}),
+            },
+          },
+          splitLine: {
+            ...(option.radar.splitLine ?? {}),
+            lineStyle: {
+              color: option.radar.splitLine?.lineStyle?.color ?? profile.splitLineColor,
+              ...(option.radar.splitLine?.lineStyle ?? {}),
+            },
+          },
+        }
+      : option.radar,
+  }
+}
+
 function toEChartsOption(raw: Record<string, any> | null): Record<string, any> | null {
   if (!raw) return null
 
@@ -377,7 +510,8 @@ function exportSVG() {
 function exportHTML() {
   const normalized = toEChartsOption(props.option)
   if (!normalized) return
-  const optionJSON = JSON.stringify(normalized, null, 2)
+  const themed = applyThemeProfile(normalized, props.theme || props.option?.theme || props.option?.chartTheme)
+  const optionJSON = JSON.stringify(themed, null, 2)
   const title = String((normalized as any)?.title?.text || 'Chart Preview')
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -410,7 +544,8 @@ function exportHTML() {
 function exportJSON() {
   const normalized = toEChartsOption(props.option)
   if (!normalized) return
-  const json = JSON.stringify(normalized, null, 2)
+  const themed = applyThemeProfile(normalized, props.theme || props.option?.theme || props.option?.chartTheme)
+  const json = JSON.stringify(themed, null, 2)
   navigator.clipboard.writeText(json).catch(() => {
     const ta = document.createElement('textarea')
     ta.value = json
@@ -455,7 +590,7 @@ onMounted(() => {
   if (!chartEl.value) return
   ensureInstance()
   const normalized = toEChartsOption(props.option)
-  if (normalized) instance!.setOption(normalized)
+  if (normalized) instance!.setOption(applyThemeProfile(normalized, props.theme || props.option?.theme || props.option?.chartTheme))
   ro = new ResizeObserver(() => instance?.resize())
   ro.observe(chartEl.value)
   nextTick(() => instance?.resize())
@@ -473,7 +608,7 @@ watch(
   () => {
     ensureInstance()
     const normalized = toEChartsOption(props.option)
-    if (instance && normalized) instance.setOption(normalized, true)
+    if (instance && normalized) instance.setOption(applyThemeProfile(normalized, props.theme || props.option?.theme || props.option?.chartTheme), true)
     nextTick(() => instance?.resize())
   },
   { deep: true },
