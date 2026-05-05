@@ -32,7 +32,6 @@ const sortBy = ref<'x' | 'y' | 'none'>('none')
 const sortAsc = ref(true)
 const topnMode = ref<'off' | 'top' | 'bottom'>('off')
 const topnValue = ref(10)
-const filterCols = ref<string[]>([])
 
 const loading = ref(false)
 const chartPayload = ref<ChartPayload | null>(null)
@@ -102,7 +101,6 @@ async function generateChart() {
         sortBy: sortBy.value,
         sortAsc: sortAsc.value,
         topN,
-        filterCols: filterCols.value,
       }
     )
     if (result.ok && result.data) {
@@ -128,12 +126,7 @@ async function generateChart() {
 
             <el-form-item label="图表类型">
               <el-select v-model="chartType" style="width:100%">
-                <el-option
-                  v-for="opt in chartTypeOptions"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
+                <el-option v-for="opt in chartTypeOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
               </el-select>
             </el-form-item>
 
@@ -151,12 +144,6 @@ async function generateChart() {
 
             <el-form-item label="颜色分组">
               <el-select v-model="colorCol" placeholder="（可选）" clearable style="width:100%">
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-
-            <el-form-item label="列过滤">
-              <el-select v-model="filterCols" multiple placeholder="留空=全部列" clearable style="width:100%">
                 <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
               </el-select>
             </el-form-item>
@@ -189,23 +176,13 @@ async function generateChart() {
             </el-form-item>
 
             <el-form-item>
-              <el-button
-                type="primary"
-                :loading="loading"
-                @click="generateChart"
-                style="width:100%"
-              >
+              <el-button type="primary" :loading="loading" @click="generateChart" style="width:100%">
                 生成图表
               </el-button>
             </el-form-item>
 
             <!-- 数据摘要 -->
-            <el-text
-              v-if="chartPayload"
-              size="small"
-              type="info"
-              style="display:block; margin-top:8px"
-            >
+            <el-text v-if="chartPayload" size="small" type="info" style="display:block; margin-top:8px">
               当前数据：{{ chartPayload.total_rows }} 行 × {{ chartPayload.columns.length }} 列
             </el-text>
           </el-form>
@@ -222,17 +199,8 @@ async function generateChart() {
             </el-tag>
           </template>
 
-          <el-empty
-            v-if="!dataStore.hasData"
-            description="请先在「数据加载」页面上传并加载数据文件"
-            :image-size="100"
-          />
-          <BiChart
-            v-else
-            :option="chartOption"
-            :loading="loading"
-            height="520px"
-          />
+          <el-empty v-if="!dataStore.hasData" description="请先在「数据加载」页面上传并加载数据文件" :image-size="100" />
+          <BiChart v-else :option="chartOption" :loading="loading" height="520px" />
         </el-card>
       </el-col>
     </el-row>

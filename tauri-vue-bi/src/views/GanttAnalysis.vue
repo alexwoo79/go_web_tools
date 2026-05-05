@@ -24,11 +24,19 @@ const dataStore = useDataStore()
 const taskCol = ref('')
 const startCol = ref('')
 const endCol = ref('')
+const projectCol = ref('')
 const colorCol = ref('')
 const milestoneCol = ref('')
+const detailCol = ref('')
 
 const loading = ref(false)
 const ganttPayload = ref<ChartPayload | null>(null)
+
+const showTaskDetails = ref(true)
+const showDuration = ref(true)
+const sortByStart = ref(true)
+const autoNumber = ref(true)
+const granularity = ref<'day' | 'week' | 'month' | 'quarter' | 'year'>('month')
 
 // ─── 统计摘要 ────────────────────────────────────────────────────────────────
 
@@ -52,12 +60,14 @@ const stats = computed(() => {
     return isNaN(s) || isNaN(e) ? 0 : (e - s) / (1000 * 60 * 60 * 24)
   })
   const avgDuration = durations.reduce((a, b) => a + b, 0) / durations.length
+  const totalDurationDays = Math.max(0, Math.round((maxEnd.getTime() - minStart.getTime()) / (1000 * 60 * 60 * 24)))
 
   return {
     total: rows.length,
     earliestStart: minStart.toLocaleDateString('zh-CN'),
     latestEnd: maxEnd.toLocaleDateString('zh-CN'),
     avgDurationDays: avgDuration.toFixed(1),
+    totalDurationDays,
   }
 })
 
@@ -84,11 +94,14 @@ function autoInferFields() {
     names[Math.min(2, names.length - 1)]
 
   // 推断颜色分组列
-  colorCol.value =
+  // 推断项目列/颜色分组列
+  projectCol.value =
     names.find((c) => /project|phase|group|分组|项目/i.test(c)) ?? ''
+  colorCol.value = projectCol.value
 
   // 里程碑列不自动推断，由用户选择
   milestoneCol.value = ''
+  detailCol.value = names.find((c) => /owner|desc|detail|remark|说明|备注|负责人/i.test(c)) ?? ''
 }
 
 // 监听数据变化时自动推断
@@ -115,8 +128,10 @@ async function loadGanttData() {
         taskCol: taskCol.value,
         startCol: startCol.value,
         endCol: endCol.value,
+        projectCol: projectCol.value || null,
         colorCol: colorCol.value || null,
         milestoneCol: milestoneCol.value || null,
+        detailCol: detailCol.value || null,
       }
     )
     if (result.ok && result.data) {
@@ -158,6 +173,12 @@ async function loadGanttData() {
               </el-select>
             </el-form-item>
 
+            <el-form-item label="项目列">
+              <el-select v-model="projectCol" placeholder="（可选）" clearable style="width:100%">
+                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+              </el-select>
+            </el-form-item>
+
             <el-form-item label="颜色分组列">
               <el-select v-model="colorCol" placeholder="（可选）" clearable style="width:100%">
                 <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
@@ -168,6 +189,40 @@ async function loadGanttData() {
               <el-select v-model="milestoneCol" placeholder="（可选）" clearable style="width:100%">
                 <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
               </el-select>
+            </el-form-item>
+
+            <el-form-item label="详情列">
+              <el-select v-model="detailCol" placeholder="tooltip 显示字段" clearable style="width:100%">
+                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+              </el-select>
+            </el-form-item>
+
+            <el-divider content-position="left">显示选项</el-divider>
+
+            <el-form-item label="时间粒度">
+              <el-select v-model="granularity" style="width:100%">
+                <el-option label="日" value="day" />
+                <el-option label="周" value="week" />
+                <el-option label="月" value="month" />
+                <el-option label="季度" value="quarter" />
+                <el-option label="年" value="year" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="按开始排序">
+              <el-switch v-model="sortByStart" />
+            </el-form-item>
+
+            <el-form-item label="自动编号">
+              <el-switch v-model="autoNumber" />
+            </el-form-item>
+
+            <el-form-item label="显示时长">
+              <el-switch v-model="showDuration" />
+            </el-form-item>
+
+            <el-form-item label="显示详情">
+              <el-switch v-model="showTaskDetails" />
             </el-form-item>
 
             <el-form-item>
@@ -183,6 +238,7 @@ async function loadGanttData() {
                 <el-descriptions-item label="总任务数">{{ stats.total }}</el-descriptions-item>
                 <el-descriptions-item label="最早开始">{{ stats.earliestStart }}</el-descriptions-item>
                 <el-descriptions-item label="最晚结束">{{ stats.latestEnd }}</el-descriptions-item>
+                <el-descriptions-item label="项目总用时">{{ stats.totalDurationDays }} 天</el-descriptions-item>
                 <el-descriptions-item label="平均工期">{{ stats.avgDurationDays }} 天</el-descriptions-item>
               </el-descriptions>
             </template>
@@ -193,27 +249,17 @@ async function loadGanttData() {
       <!-- 右侧：甘特图 -->
       <el-col :span="17">
         <el-card class="panel-card" header="甘特图（横道图）">
-          <el-empty
-            v-if="!dataStore.hasData"
-            description="请先在「数据加载」页面上传数据"
-            :image-size="100"
-          />
-          <el-empty
-            v-else-if="!ganttPayload"
-            description="请配置字段并点击「生成甘特图」"
-            :image-size="80"
-          />
-          <BiGanttChart
-            v-else
-            :rows="ganttPayload.rows"
-            :task-col="taskCol"
-            :start-col="startCol"
-            :end-col="endCol"
-            :color-col="colorCol || undefined"
-            :milestone-col="milestoneCol || undefined"
-            :loading="loading"
-            height="520px"
-          />
+          <el-empty v-if="!dataStore.hasData" description="请先在「数据加载」页面上传数据" :image-size="100" />
+          <el-empty v-else-if="!ganttPayload" description="请配置字段并点击「生成甘特图」" :image-size="80" />
+          <BiGanttChart v-else :rows="ganttPayload.rows" :task-col="taskCol" :start-col="startCol" :end-col="endCol"
+            :project-col="projectCol || undefined" :color-col="colorCol || undefined"
+            :milestone-col="milestoneCol || undefined" :detail-col="detailCol || undefined" :options="{
+              showTaskDetails,
+              showDuration,
+              sortByStart,
+              autoNumber,
+              granularity,
+            }" :loading="loading" height="520px" />
         </el-card>
       </el-col>
     </el-row>

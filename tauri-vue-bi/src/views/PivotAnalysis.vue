@@ -10,13 +10,13 @@
 //   3. 渲染透视表（el-table）
 //   4. 可选：将透视结果转为图表（调用 BiChart）
 
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '../stores/dataStore'
 import BiChart from '../components/BiChart.vue'
 import type { ChartPayload } from '../utils/chartAdapter'
-import type { EChartsOption } from 'echarts'
+import type { EChartsOption, BarSeriesOption } from 'echarts'
 
 const dataStore = useDataStore()
 
@@ -32,7 +32,7 @@ const pivotPayload = ref<ChartPayload | null>(null)
 
 // ─── 可选：将透视表渲染为柱状图 ──────────────────────────────────────────────
 const showChart = ref(false)
-const pivotChartOption = ref<EChartsOption | null>(null)
+const pivotChartOption = shallowRef<EChartsOption | null>(null)
 
 // ─── 执行透视 ────────────────────────────────────────────────────────────────
 
@@ -81,13 +81,13 @@ function buildPivotChart(payload: ChartPayload) {
   const labelCol = payload.columns[0]?.name ?? ''
   const numCols = payload.columns.slice(1)
 
-  const series = numCols.map((col) => ({
+  const series: BarSeriesOption[] = numCols.map((col) => ({
     name: col.name,
     type: 'bar' as const,
-    data: payload.rows.map((r) => r[col.name] ?? 0),
+    data: payload.rows.map((r) => Number(r[col.name] ?? 0)),
   }))
 
-  pivotChartOption.value = {
+  const option: EChartsOption = {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis' as const },
     legend: { bottom: 0 },
@@ -99,6 +99,8 @@ function buildPivotChart(payload: ChartPayload) {
     yAxis: { type: 'value' },
     series,
   }
+
+  pivotChartOption.value = option
 }
 </script>
 
@@ -164,33 +166,11 @@ function buildPivotChart(payload: ChartPayload) {
 
         <!-- 透视表格 -->
         <el-card class="panel-card" :header="`透视表（${pivotPayload?.total_rows ?? 0} 行）`">
-          <el-empty
-            v-if="!dataStore.hasData"
-            description="请先加载数据，再执行透视"
-            :image-size="80"
-          />
-          <el-empty
-            v-else-if="!pivotPayload"
-            description="请设置透视参数后点击「执行透视」"
-            :image-size="80"
-          />
-          <el-table
-            v-else
-            :data="pivotPayload.rows"
-            border
-            stripe
-            size="small"
-            max-height="60vh"
-            style="width:100%"
-          >
-            <el-table-column
-              v-for="col in pivotPayload.columns"
-              :key="col.name"
-              :prop="col.name"
-              :label="col.name"
-              min-width="120"
-              show-overflow-tooltip
-            />
+          <el-empty v-if="!dataStore.hasData" description="请先加载数据，再执行透视" :image-size="80" />
+          <el-empty v-else-if="!pivotPayload" description="请设置透视参数后点击「执行透视」" :image-size="80" />
+          <el-table v-else :data="pivotPayload.rows" border stripe size="small" max-height="60vh" style="width:100%">
+            <el-table-column v-for="col in pivotPayload.columns" :key="col.name" :prop="col.name" :label="col.name"
+              min-width="120" show-overflow-tooltip />
           </el-table>
         </el-card>
       </el-col>

@@ -33,17 +33,13 @@ tauri-plugin-fs = "2"
 # ── Async runtime ─────────────────────────────────────────────────────────────
 tokio = { version = "1", features = ["full"] }
 
-# ── Data processing: DuckDB ───────────────────────────────────────────────────
-# DuckDB provides an in-process SQL OLAP database used for fast aggregations,
-# pivots, and chart-data queries without a separate server process.
-duckdb = { version = "1", features = ["bundled"] }
-
 # ── Data processing: Polars ───────────────────────────────────────────────────
 # Polars is a DataFrame library used for data loading, cleaning, and
 # transformations (fillna, dedup, type-cast, groupby, melt/unpivot, etc.).
 polars = { version = "0.46", features = [
     "lazy",
     "csv",
+    "strings",
     "dtype-date",
     "dtype-datetime",
     "dtype-duration",
@@ -53,6 +49,8 @@ polars = { version = "0.46", features = [
     "rows",
     "serde",
 ] }
+polars-ops = { version = "0.46", features = ["pivot"] }
+regex = "1"
 
 # ── Serialization ─────────────────────────────────────────────────────────────
 serde = { version = "1", features = ["derive"] }
@@ -61,6 +59,12 @@ serde_json = "1"
 # ── Error handling ────────────────────────────────────────────────────────────
 anyhow = "1"
 thiserror = "1"
+
+# ── Excel I/O ─────────────────────────────────────────────────────────────────
+# calamine: read xlsx/xls/xlsm/ods files (pure Rust, no libxlsx dependency)
+calamine = { version = "0.26", features = ["dates"] }
+# rust_xlsxwriter: write xlsx files (pure Rust)
+rust_xlsxwriter = "0.80"
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 # Used for generating unique session/state keys

@@ -8,16 +8,18 @@
 //   1. 文件选择（CSV / Excel）+ 加载参数（跳行、表头行）
 //   2. 数据预览（前 100 行，el-table）
 //   3. 清洗操作面板（依次执行）：
-//      a. 填充缺失值      (fillna)
-//      b. 去重            (dedup)
-//      c. 去除前后空格    (trim)
-//      d. 查找替换        (find & replace)
-//      e. 类型转换        (type cast)
+//      a. 列过滤          (column filter)
+//      b. 行条件过滤      (row filter)
+//      c. 填充缺失值      (fillna)
+//      d. 去重            (dedup)
+//      e. 去除前后空格    (trim)
+//      f. 查找替换        (find & replace)
+//      g. 类型转换        (type cast)
 //   4. 预览清洗结果 + 导出（通过 Tauri 文件系统）
 
-import { ref, computed } from 'vue'
+import { shallowRef, ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '../stores/dataStore'
 import type { ChartPayload } from '../utils/chartAdapter'
@@ -33,6 +35,23 @@ const headerRow = ref(-1)
 const loading = ref(false)
 
 // 清洗参数
+const filterCols = ref<string[]>([])
+type RowFilterOp =
+  | 'eq'
+  | 'ne'
+  | 'gt'
+  | 'ge'
+  | 'lt'
+  | 'le'
+  | 'contains'
+  | 'not_contains'
+  | 'starts_with'
+  | 'ends_with'
+  | 'is_null'
+  | 'not_null'
+const rowFilterCol = ref('')
+const rowFilterOp = ref<RowFilterOp>('eq')
+const rowFilterVal = ref('')
 const fillnaCol = ref('')
 const fillnaVal = ref('')
 const dedupCols = ref<string[]>([])
@@ -45,13 +64,30 @@ const typeCol = ref('')
 const typeTarget = ref<'int' | 'float' | 'str' | 'datetime' | 'date'>('str')
 
 // 清洗后预览数据
-const cleanedPayload = ref<ChartPayload | null>(null)
+const cleanedPayload = shallowRef<ChartPayload | null>(null)
 const cleanLoading = ref(false)
+
+const rowFilterOpOptions: { label: string; value: RowFilterOp }[] = [
+  { label: '等于 (=)', value: 'eq' },
+  { label: '不等于 (≠)', value: 'ne' },
+  { label: '大于 (>)', value: 'gt' },
+  { label: '大于等于 (>=)', value: 'ge' },
+  { label: '小于 (<)', value: 'lt' },
+  { label: '小于等于 (<=)', value: 'le' },
+  { label: '包含', value: 'contains' },
+  { label: '不包含', value: 'not_contains' },
+  { label: '前缀匹配', value: 'starts_with' },
+  { label: '后缀匹配', value: 'ends_with' },
+  { label: '为空', value: 'is_null' },
+  { label: '非空', value: 'not_null' },
+]
 
 // ─── 计算属性 ─────────────────────────────────────────────────────────────────
 
 // 用于 el-table 的列定义（来自已加载的 payload）
-const tableColumns = computed(() => dataStore.columns)
+const tableColumns = computed(
+  () => (cleanedPayload.value ?? dataStore.payload)?.columns ?? []
+)
 
 // 预览的行（优先显示清洗后，否则显示原始）
 const previewRows = computed(
@@ -61,12 +97,16 @@ const previewRows = computed(
 // ─── 文件选择 ────────────────────────────────────────────────────────────────
 
 async function selectFile() {
-  const selected = await openDialog({
-    multiple: false,
-    filters: [{ name: '数据文件', extensions: ['csv', 'xlsx', 'xls', 'xlsm'] }],
-  })
-  if (selected && typeof selected === 'string') {
-    filePath.value = selected
+  try {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [{ name: '数据文件', extensions: ['csv', 'xlsx', 'xls', 'xlsm'] }],
+    })
+    if (selected && typeof selected === 'string') {
+      filePath.value = selected
+    }
+  } catch (e: any) {
+    ElMessage.error(`文件选择失败: ${String(e)}`)
   }
 }
 
@@ -79,22 +119,42 @@ async function loadFile() {
   }
   loading.value = true
   cleanedPayload.value = null
+  const perfLabel = '📊 数据加载性能'
   try {
+    console.time(perfLabel)
+    console.log('📥 开始 Tauri IPC 调用...')
+
+    const t1 = performance.now()
     const result: { ok: boolean; data?: ChartPayload; error?: string } = await invoke('load_file', {
       path: filePath.value,
       skipHead: skipHead.value,
       skipTail: skipTail.value,
       headerRow: headerRow.value,
     })
+    const t2 = performance.now()
+    console.log(`⏱️  Tauri IPC: ${(t2 - t1).toFixed(2)}ms`)
+
     if (result.ok && result.data) {
+      console.log(`📦 数据包大小: ${result.data.total_rows} 行 × ${result.data.columns.length} 列`)
+      console.log(`📝 预览行数: ${result.data.rows.length} 行`)
+
+      const t3 = performance.now()
       dataStore.setPayload(result.data)
+      const t4 = performance.now()
+      console.log(`⚡ 状态更新: ${(t4 - t3).toFixed(2)}ms (shallowRef 优化)`)
+
       // 重置清洗参数
+      filterCols.value = []
+      rowFilterCol.value = ''
+      rowFilterOp.value = 'eq'
+      rowFilterVal.value = ''
       fillnaCol.value = ''
       dedupCols.value = []
       trimCols.value = []
       frCols.value = []
       typeCol.value = ''
-      ElMessage.success(`数据加载成功，共 ${result.data.total_rows} 行`)
+      console.timeEnd(perfLabel)
+      ElMessage.success(`✅ 数据加载成功，共 ${result.data.total_rows} 行（预览 ${result.data.rows.length} 行）`)
     } else {
       ElMessage.error(result.error ?? '加载失败')
     }
@@ -115,6 +175,10 @@ async function applyClean() {
   cleanLoading.value = true
   try {
     const result: { ok: boolean; data?: ChartPayload; error?: string } = await invoke('clean_data', {
+      filterCols: filterCols.value,
+      rowFilterCol: rowFilterCol.value,
+      rowFilterOp: rowFilterOp.value,
+      rowFilterVal: rowFilterVal.value,
       fillnaCol: fillnaCol.value,
       fillnaVal: fillnaVal.value,
       dedupCols: dedupCols.value,
@@ -128,9 +192,128 @@ async function applyClean() {
     })
     if (result.ok && result.data) {
       cleanedPayload.value = result.data
+      // Keep store metadata in sync so dtype tags and cross-page column types update.
+      dataStore.setPayload(result.data)
       ElMessage.success(`清洗完成，共 ${result.data.total_rows} 行`)
     } else {
       ElMessage.error(result.error ?? '清洗失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(String(e))
+  } finally {
+    cleanLoading.value = false
+  }
+}
+
+type CleanSection = 'columnFilter' | 'rowFilter' | 'fillna' | 'dedup' | 'trim' | 'findReplace' | 'typeCast'
+
+function rowFilterNeedsValue(op: RowFilterOp) {
+  return op !== 'is_null' && op !== 'not_null'
+}
+
+function buildSectionPayload(section: CleanSection) {
+  return {
+    filterCols: section === 'columnFilter' ? filterCols.value : [],
+    rowFilterCol: section === 'rowFilter' ? rowFilterCol.value : '',
+    rowFilterOp: section === 'rowFilter' ? rowFilterOp.value : 'eq',
+    rowFilterVal: section === 'rowFilter' ? rowFilterVal.value : '',
+    fillnaCol: section === 'fillna' ? fillnaCol.value : '',
+    fillnaVal: section === 'fillna' ? fillnaVal.value : '',
+    dedupCols: section === 'dedup' ? dedupCols.value : [],
+    trimCols: section === 'trim' ? trimCols.value : [],
+    frCols: section === 'findReplace' ? frCols.value : [],
+    findText: section === 'findReplace' ? findText.value : '',
+    replaceText: section === 'findReplace' ? replaceText.value : '',
+    useRegex: section === 'findReplace' ? useRegex.value : false,
+    typeCol: section === 'typeCast' ? typeCol.value : '',
+    typeTarget: section === 'typeCast' ? typeTarget.value : 'str',
+  }
+}
+
+async function applySectionClean(section: CleanSection) {
+  if (!dataStore.hasData) {
+    ElMessage.warning('请先加载数据')
+    return
+  }
+
+  if (section === 'fillna' && !fillnaCol.value) {
+    ElMessage.warning('请选择填充缺失值的目标列')
+    return
+  }
+  if (section === 'columnFilter' && filterCols.value.length === 0) {
+    ElMessage.warning('请至少选择一列进行去除')
+    return
+  }
+  if (section === 'rowFilter' && !rowFilterCol.value) {
+    ElMessage.warning('请选择行条件过滤的目标列')
+    return
+  }
+  if (section === 'rowFilter' && rowFilterNeedsValue(rowFilterOp.value) && !rowFilterVal.value) {
+    ElMessage.warning('请输入行条件过滤值')
+    return
+  }
+  if (section === 'typeCast' && !typeCol.value) {
+    ElMessage.warning('请选择类型转换的目标列')
+    return
+  }
+  if (section === 'findReplace' && !findText.value) {
+    ElMessage.warning('请输入查找文本')
+    return
+  }
+
+  cleanLoading.value = true
+  try {
+    const result: { ok: boolean; data?: ChartPayload; error?: string } = await invoke('clean_data', buildSectionPayload(section))
+    if (result.ok && result.data) {
+      cleanedPayload.value = result.data
+      dataStore.setPayload(result.data)
+      ElMessage.success('当前清洗项已应用')
+    } else {
+      ElMessage.error(result.error ?? '清洗失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(String(e))
+  } finally {
+    cleanLoading.value = false
+  }
+}
+
+async function undoCleanStep() {
+  if (!dataStore.hasData) {
+    ElMessage.warning('请先加载数据')
+    return
+  }
+  cleanLoading.value = true
+  try {
+    const result: { ok: boolean; data?: ChartPayload; error?: string } = await invoke('undo_clean')
+    if (result.ok && result.data) {
+      cleanedPayload.value = result.data
+      dataStore.setPayload(result.data)
+      ElMessage.success('已撤销一步清洗')
+    } else {
+      ElMessage.warning(result.error ?? '没有可撤销步骤')
+    }
+  } catch (e: any) {
+    ElMessage.error(String(e))
+  } finally {
+    cleanLoading.value = false
+  }
+}
+
+async function rollbackClean() {
+  if (!dataStore.hasData) {
+    ElMessage.warning('请先加载数据')
+    return
+  }
+  cleanLoading.value = true
+  try {
+    const result: { ok: boolean; data?: ChartPayload; error?: string } = await invoke('rollback_clean')
+    if (result.ok && result.data) {
+      dataStore.setPayload(result.data)
+      cleanedPayload.value = null
+      ElMessage.success('已回退到加载时原始数据')
+    } else {
+      ElMessage.error(result.error ?? '回退失败')
     }
   } catch (e: any) {
     ElMessage.error(String(e))
@@ -143,6 +326,10 @@ async function applyClean() {
 
 function resetClean() {
   cleanedPayload.value = null
+  filterCols.value = []
+  rowFilterCol.value = ''
+  rowFilterOp.value = 'eq'
+  rowFilterVal.value = ''
   fillnaCol.value = ''
   fillnaVal.value = ''
   dedupCols.value = []
@@ -153,6 +340,40 @@ function resetClean() {
   useRegex.value = false
   typeCol.value = ''
   typeTarget.value = 'str'
+}
+
+// ─── 导出文件 ────────────────────────────────────────────────────────────────
+
+const saveLoading = ref(false)
+
+async function exportFile(format: 'csv' | 'xlsx') {
+  if (!dataStore.hasData) {
+    ElMessage.warning('请先加载数据')
+    return
+  }
+  try {
+    const savePath = await saveDialog({
+      filters: format === 'xlsx'
+        ? [{ name: 'Excel 工作表', extensions: ['xlsx'] }]
+        : [{ name: 'CSV 文件', extensions: ['csv'] }],
+      defaultPath: `export.${format}`,
+    })
+    if (!savePath) return
+
+    saveLoading.value = true
+    const result: { ok: boolean; data?: string; error?: string } = await invoke('save_file', {
+      path: savePath,
+    })
+    if (result.ok) {
+      ElMessage.success(`已导出到: ${result.data}`)
+    } else {
+      ElMessage.error(result.error ?? '导出失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(String(e))
+  } finally {
+    saveLoading.value = false
+  }
 }
 </script>
 
@@ -182,7 +403,7 @@ function resetClean() {
               <el-text class="hint" size="small">-1 = 首行为表头</el-text>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" :loading="loading" @click="loadFile" style="width:100%">
+              <el-button class="action-btn load-btn" type="primary" :loading="loading" @click="loadFile">
                 加载数据
               </el-button>
             </el-form-item>
@@ -193,6 +414,38 @@ function resetClean() {
         <el-card class="panel-card" style="margin-top:16px;" header="② 数据清洗">
           <el-form label-width="90px" label-position="left" size="small" :disabled="!dataStore.hasData">
 
+            <el-divider content-position="left">去除列</el-divider>
+            <el-form-item label="去除列">
+              <el-select v-model="filterCols" multiple placeholder="留空=不去除" clearable>
+                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+              </el-select>
+            </el-form-item>
+            <el-form-item class="section-actions">
+              <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                @click="applySectionClean('columnFilter')">应用当前项</el-button>
+              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+            </el-form-item>
+
+            <el-divider content-position="left">行数据条件过滤</el-divider>
+            <el-form-item label="目标列">
+              <el-select v-model="rowFilterCol" placeholder="选择列" clearable>
+                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="操作符">
+              <el-select v-model="rowFilterOp">
+                <el-option v-for="op in rowFilterOpOptions" :key="op.value" :label="op.label" :value="op.value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="条件值">
+              <el-input v-model="rowFilterVal" :disabled="!rowFilterNeedsValue(rowFilterOp)" placeholder="输入过滤值" />
+            </el-form-item>
+            <el-form-item class="section-actions">
+              <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                @click="applySectionClean('rowFilter')">应用当前项</el-button>
+              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+            </el-form-item>
+
             <el-divider content-position="left">填充缺失值</el-divider>
             <el-form-item label="目标列">
               <el-select v-model="fillnaCol" placeholder="选择列" clearable>
@@ -202,6 +455,11 @@ function resetClean() {
             <el-form-item label="填充值">
               <el-input v-model="fillnaVal" placeholder="输入填充值" />
             </el-form-item>
+            <el-form-item class="section-actions">
+              <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                @click="applySectionClean('fillna')">应用当前项</el-button>
+              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+            </el-form-item>
 
             <el-divider content-position="left">去重</el-divider>
             <el-form-item label="去重列">
@@ -209,12 +467,22 @@ function resetClean() {
                 <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
               </el-select>
             </el-form-item>
+            <el-form-item class="section-actions">
+              <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                @click="applySectionClean('dedup')">应用当前项</el-button>
+              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+            </el-form-item>
 
             <el-divider content-position="left">去除前后空格</el-divider>
             <el-form-item label="目标列">
               <el-select v-model="trimCols" multiple placeholder="选择字符串列" clearable>
                 <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
               </el-select>
+            </el-form-item>
+            <el-form-item class="section-actions">
+              <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                @click="applySectionClean('trim')">应用当前项</el-button>
+              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
             </el-form-item>
 
             <el-divider content-position="left">查找替换</el-divider>
@@ -232,6 +500,11 @@ function resetClean() {
             <el-form-item label="正则表达式">
               <el-switch v-model="useRegex" />
             </el-form-item>
+            <el-form-item class="section-actions">
+              <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                @click="applySectionClean('findReplace')">应用当前项</el-button>
+              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+            </el-form-item>
 
             <el-divider content-position="left">类型转换</el-divider>
             <el-form-item label="目标列">
@@ -248,15 +521,40 @@ function resetClean() {
                 <el-option label="日期 (date)" value="date" />
               </el-select>
             </el-form-item>
+            <el-form-item class="section-actions">
+              <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                @click="applySectionClean('typeCast')">应用当前项</el-button>
+              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+            </el-form-item>
 
-            <el-form-item>
-              <el-button type="primary" :loading="cleanLoading" @click="applyClean" style="width:60%">
+            <el-form-item class="clean-actions">
+              <el-button class="action-btn clean-btn-main" type="primary" :loading="cleanLoading" @click="applyClean">
                 应用清洗
               </el-button>
-              <el-button @click="resetClean" style="width:35%; margin-left:5%">
+              <el-button class="action-btn" type="warning" :loading="cleanLoading" @click="rollbackClean">
+                回退数据
+              </el-button>
+              <el-button class="action-btn" @click="resetClean">
                 重置
               </el-button>
             </el-form-item>
+          </el-form>
+        </el-card>
+
+        <!-- 导出操作卡 -->
+        <el-card class="panel-card" style="margin-top:16px;" header="↓ 导出数据">
+          <el-form label-width="0" size="small" :disabled="!dataStore.hasData">
+            <el-form-item class="export-actions">
+              <el-button class="action-btn" type="success" :loading="saveLoading" :disabled="!dataStore.hasData"
+                @click="exportFile('csv')">
+                导出 CSV
+              </el-button>
+              <el-button class="action-btn" type="warning" :loading="saveLoading" :disabled="!dataStore.hasData"
+                @click="exportFile('xlsx')">
+                导出 Excel
+              </el-button>
+            </el-form-item>
+            <el-text type="info" size="small">导出当前全量数据（非预览行）</el-text>
           </el-form>
         </el-card>
       </el-col>
@@ -265,31 +563,25 @@ function resetClean() {
       <el-col :span="16">
         <el-card class="panel-card" :header="`数据预览（${previewRows.length} 行${cleanedPayload ? ' — 已清洗' : ''}）`">
           <el-empty v-if="previewRows.length === 0" description="暂无数据，请先加载文件" :image-size="80" />
-          <el-table
-            v-else
-            :data="previewRows"
-            border
-            stripe
-            size="small"
-            max-height="65vh"
-            style="width: 100%"
-          >
-            <el-table-column
-              v-for="col in tableColumns"
-              :key="col.name"
-              :prop="col.name"
-              :label="col.name"
-              min-width="120"
-              show-overflow-tooltip
-            >
-              <template #header>
-                <div class="col-header">
-                  <span>{{ col.name }}</span>
-                  <el-tag size="small" type="info">{{ col.dtype }}</el-tag>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div v-else class="table-wrapper">
+            <div class="table-info">
+              <el-text type="info" size="small">
+                {{ previewRows.length }} 行（总计 {{ dataStore.payload?.total_rows }} 行）
+              </el-text>
+            </div>
+            <el-table :data="previewRows" border stripe size="small" style="width: 100%"
+              :default-sort="{ prop: '', order: null }" height="calc(65vh - 40px)">
+              <el-table-column v-for="col in tableColumns" :key="col.name" :prop="col.name" :label="col.name"
+                min-width="120" show-overflow-tooltip>
+                <template #header>
+                  <div class="col-header">
+                    <span>{{ col.name }}</span>
+                    <el-tag size="small" type="info">{{ col.dtype }}</el-tag>
+                  </div>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </el-card>
       </el-col>
     </el-row>
@@ -315,5 +607,75 @@ function resetClean() {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.table-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: calc(65vh);
+}
+
+.table-info {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.action-btn {
+  height: 32px;
+  font-size: 14px;
+  font-weight: 500;
+  margin-left: 0 !important;
+}
+
+.load-btn {
+  width: 100%;
+}
+
+.clean-actions :deep(.el-form-item__content) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.clean-actions .action-btn {
+  flex: 1 1 110px;
+}
+
+.section-actions :deep(.el-form-item__content) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-actions .action-btn {
+  flex: 1 1 120px;
+}
+
+.clean-btn-main {
+  flex: 1.5 1 170px;
+}
+
+.export-actions :deep(.el-form-item__content) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.export-actions .action-btn {
+  flex: 1 1 180px;
+}
+
+@media (max-width: 1280px) {
+
+  .clean-actions .action-btn,
+  .export-actions .action-btn {
+    flex: 1 1 100%;
+  }
+
+  .clean-btn-main {
+    flex: 1 1 100%;
+  }
 }
 </style>

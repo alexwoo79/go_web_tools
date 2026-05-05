@@ -4,12 +4,14 @@
 // 存储当前加载的 DataFrame 信息，在各个 View 之间共享。
 
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { shallowRef, computed } from 'vue'
 import type { ColumnInfo, ChartPayload } from '../utils/chartAdapter'
 
 export const useDataStore = defineStore('data', () => {
   // 当前加载的数据预览（前 100 行）
-  const payload = ref<ChartPayload | null>(null)
+  // 使用 shallowRef 避免深度响应造成的内存开销
+  // 只有顶级对象变化时才触发更新，而不跟踪数组内部的行对象
+  const payload = shallowRef<ChartPayload | null>(null)
 
   // 是否已加载数据
   const hasData = computed(() => payload.value !== null && payload.value.total_rows > 0)

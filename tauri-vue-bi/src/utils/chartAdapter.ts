@@ -228,7 +228,10 @@ function buildPieOption(
       {
         type: 'pie',
         radius: ['35%', '65%'],
-        data: rows.map((r) => ({ name: String(r[xCol] ?? ''), value: r[yCol] ?? 0 })),
+        data: rows.map((r) => ({
+          name: String(r[xCol] ?? ''),
+          value: Number(r[yCol] ?? 0),
+        })),
         emphasis: { itemStyle: { shadowBlur: 10 } },
       },
     ],

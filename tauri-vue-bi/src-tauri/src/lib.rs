@@ -11,8 +11,7 @@
 // ─────────────────────
 //   Frontend (Vue3/TS)  ──invoke──▶  Tauri IPC  ──▶  commands.rs
 //                                                         │
-//                                              ┌──────────┴──────────┐
-//                                         Polars (clean / load)   DuckDB (query / pivot)
+//                                              Polars (load / clean / pivot / groupby)
 
 pub mod commands;
 
@@ -22,7 +21,6 @@ use anyhow::Result;
 use once_cell::sync::Lazy;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Global shared state
@@ -31,6 +29,10 @@ use tauri::Manager;
 /// The currently loaded DataFrame, shared across all Tauri commands.
 /// Wrapped in `Mutex` so that concurrent invocations are serialised.
 pub static GLOBAL_DF: Lazy<Mutex<Option<DataFrame>>> = Lazy::new(|| Mutex::new(None));
+/// Snapshot of the DataFrame right after `load_file`, used for rollback.
+pub static ORIGINAL_DF: Lazy<Mutex<Option<DataFrame>>> = Lazy::new(|| Mutex::new(None));
+/// History stack for step-wise clean undo.
+pub static CLEAN_HISTORY: Lazy<Mutex<Vec<DataFrame>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared data types (used by both lib.rs and commands.rs)
@@ -76,8 +78,9 @@ pub struct ChartPayload {
 // Helper: convert Polars DataFrame ─▶ ChartPayload
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn df_to_payload(df: &DataFrame) -> Result<ChartPayload> {
+pub fn df_to_payload(df: &DataFrame, limit: Option<usize>) -> Result<ChartPayload> {
     let total_rows = df.height();
+    let preview_n = limit.map(|l| l.min(total_rows)).unwrap_or(total_rows);
 
     // Build column metadata
     let columns: Vec<ColumnInfo> = df
@@ -89,13 +92,20 @@ pub fn df_to_payload(df: &DataFrame) -> Result<ChartPayload> {
         })
         .collect();
 
-    // Serialise each row to a JSON map
-    let mut rows: Vec<RowMap> = Vec::with_capacity(total_rows);
-    for row_idx in 0..total_rows {
-        let mut map = serde_json::Map::new();
-        for series in df.get_columns() {
-            let val = series_value_to_json(series, row_idx);
-            map.insert(series.name().to_string(), val);
+    // Pre-collect column names once to avoid per-row allocations (key optimization)
+    let col_names: Vec<String> = df
+        .get_columns()
+        .iter()
+        .map(|s| s.name().to_string())
+        .collect();
+
+    // Serialise only the preview rows to a JSON map
+    let mut rows: Vec<RowMap> = Vec::with_capacity(preview_n);
+    for row_idx in 0..preview_n {
+        let mut map = serde_json::Map::with_capacity(col_names.len());
+        for (i, column) in df.get_columns().iter().enumerate() {
+            let val = series_value_to_json(column, row_idx);
+            map.insert(col_names[i].clone(), val);
         }
         rows.push(map);
     }
@@ -103,12 +113,12 @@ pub fn df_to_payload(df: &DataFrame) -> Result<ChartPayload> {
     Ok(ChartPayload { columns, rows, total_rows })
 }
 
-/// Extract a single cell from a `Series` as a JSON `Value`.
-fn series_value_to_json(s: &Series, idx: usize) -> serde_json::Value {
+/// Extract a single cell from a `Column` as a JSON `Value`.
+fn series_value_to_json(s: &Column, idx: usize) -> serde_json::Value {
     use serde_json::Value;
     use AnyValue::*;
 
-    match s.get(idx).unwrap_or(AnyValue::Null) {
+    match s.as_materialized_series().get(idx).unwrap_or(AnyValue::Null) {
         Null => Value::Null,
         Boolean(v) => Value::Bool(v),
         Int8(v) => Value::Number(v.into()),
@@ -137,6 +147,22 @@ fn series_value_to_json(s: &Series, idx: usize) -> serde_json::Value {
 // Core Tauri commands (high-level orchestration)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// 预览行数上限 — 加载/清洗时返回给前端的最大行数
+const PREVIEW_LIMIT: usize = 200;
+/// 图表渲染行数上限 — chart/pivot/groupby 结果的最大序列化行数
+const CHART_LIMIT: usize = 5_000;
+
+/// 从全局 DF 中取出一个 clone（立即释放 Mutex），若无数据返回 Err。
+macro_rules! take_df {
+    () => {{
+        let guard = GLOBAL_DF.lock().unwrap();
+        match guard.as_ref() {
+            None => return ApiResult::failure("No data loaded. Please select a file and click Load."),
+            Some(df) => df.clone(),
+        }
+    }};
+}
+
 /// Load a CSV or Excel file into the global DataFrame.
 ///
 /// Parameters
@@ -146,7 +172,7 @@ fn series_value_to_json(s: &Series, idx: usize) -> serde_json::Value {
 /// `skip_tail`  – number of rows to skip at the bottom
 /// `header_row` – 0-based index of the header row (-1 = first row is header)
 #[tauri::command]
-pub async fn load_file(
+async fn load_file(
     path: String,
     skip_head: usize,
     skip_tail: usize,
@@ -154,8 +180,11 @@ pub async fn load_file(
 ) -> ApiResult<ChartPayload> {
     match commands::load_file_impl(&path, skip_head, skip_tail, header_row) {
         Ok(df) => {
-            let payload = df_to_payload(&df);
-            *GLOBAL_DF.lock().unwrap() = Some(df);
+            // 只序列化预览行，全量 DataFrame 保存到全局状态
+            let payload = df_to_payload(&df, Some(PREVIEW_LIMIT));
+            *GLOBAL_DF.lock().unwrap() = Some(df.clone());
+            *ORIGINAL_DF.lock().unwrap() = Some(df);
+            CLEAN_HISTORY.lock().unwrap().clear();
             match payload {
                 Ok(p) => ApiResult::success(p),
                 Err(e) => ApiResult::failure(e.to_string()),
@@ -167,18 +196,12 @@ pub async fn load_file(
 
 /// Return a summary of the currently loaded DataFrame (columns + first N rows).
 #[tauri::command]
-pub async fn get_dataframe_info(limit: Option<usize>) -> ApiResult<ChartPayload> {
-    let guard = GLOBAL_DF.lock().unwrap();
-    match guard.as_ref() {
-        None => ApiResult::failure("No data loaded. Please load a file first."),
-        Some(df) => {
-            let n = limit.unwrap_or(100).min(df.height());
-            let slice = df.slice(0, n);
-            match df_to_payload(&slice) {
-                Ok(p) => ApiResult::success(p),
-                Err(e) => ApiResult::failure(e.to_string()),
-            }
-        }
+async fn get_dataframe_info(limit: Option<usize>) -> ApiResult<ChartPayload> {
+    let df = take_df!();
+    let n = limit.unwrap_or(PREVIEW_LIMIT);
+    match df_to_payload(&df, Some(n)) {
+        Ok(p) => ApiResult::success(p),
+        Err(e) => ApiResult::failure(e.to_string()),
     }
 }
 
@@ -196,7 +219,7 @@ pub async fn get_dataframe_info(limit: Option<usize>) -> ApiResult<ChartPayload>
 /// `top_n`      – 0 = no limit; > 0 = keep top N rows; < 0 = keep bottom N rows
 /// `filter_cols`– list of columns to retain (empty = keep all)
 #[tauri::command]
-pub async fn fetch_chart_data(
+async fn fetch_chart_data(
     x_col: String,
     y_col: String,
     color_col: Option<String>,
@@ -205,27 +228,22 @@ pub async fn fetch_chart_data(
     top_n: i64,
     filter_cols: Vec<String>,
 ) -> ApiResult<ChartPayload> {
-    let guard = GLOBAL_DF.lock().unwrap();
-    match guard.as_ref() {
-        None => ApiResult::failure("No data loaded."),
-        Some(df) => {
-            match commands::fetch_chart_data_impl(
-                df,
-                &x_col,
-                &y_col,
-                color_col.as_deref(),
-                &sort_by,
-                sort_asc,
-                top_n,
-                &filter_cols,
-            ) {
-                Ok(result_df) => match df_to_payload(&result_df) {
-                    Ok(p) => ApiResult::success(p),
-                    Err(e) => ApiResult::failure(e.to_string()),
-                },
-                Err(e) => ApiResult::failure(e.to_string()),
-            }
-        }
+    let df = take_df!();
+    match commands::fetch_chart_data_impl(
+        &df,
+        &x_col,
+        &y_col,
+        color_col.as_deref(),
+        &sort_by,
+        sort_asc,
+        top_n,
+        &filter_cols,
+    ) {
+        Ok(result_df) => match df_to_payload(&result_df, Some(CHART_LIMIT)) {
+            Ok(p) => ApiResult::success(p),
+            Err(e) => ApiResult::failure(e.to_string()),
+        },
+        Err(e) => ApiResult::failure(e.to_string()),
     }
 }
 
@@ -238,45 +256,33 @@ pub async fn fetch_chart_data(
 /// `values`  – columns to aggregate
 /// `agg`     – aggregation function: "sum" | "mean" | "count" | "min" | "max"
 #[tauri::command]
-pub async fn pivot_data(
+async fn pivot_data(
     rows: Vec<String>,
     columns: Vec<String>,
     values: Vec<String>,
     agg: String,
 ) -> ApiResult<ChartPayload> {
-    let guard = GLOBAL_DF.lock().unwrap();
-    match guard.as_ref() {
-        None => ApiResult::failure("No data loaded."),
-        Some(df) => match commands::pivot_data_impl(df, &rows, &columns, &values, &agg) {
-            Ok(result_df) => match df_to_payload(&result_df) {
-                Ok(p) => ApiResult::success(p),
-                Err(e) => ApiResult::failure(e.to_string()),
-            },
+    let df = take_df!();
+    match commands::pivot_data_impl(&df, &rows, &columns, &values, &agg) {
+        Ok(result_df) => match df_to_payload(&result_df, Some(CHART_LIMIT)) {
+            Ok(p) => ApiResult::success(p),
             Err(e) => ApiResult::failure(e.to_string()),
         },
+        Err(e) => ApiResult::failure(e.to_string()),
     }
 }
 
 /// Apply cleaning operations to the global DataFrame and return the result.
 ///
 /// The cleaning steps are applied in this order:
-///   1. fillna  → 2. dedup  → 3. trim  → 4. find/replace  → 5. type-cast
-///
-/// Parameters
-/// ──────────
-/// `fillna_col`    – column to fill nulls in (empty string = skip)
-/// `fillna_val`    – fill value
-/// `dedup_cols`    – columns to deduplicate on (empty = all columns)
-/// `trim_cols`     – string columns to strip whitespace
-/// `fr_cols`       – columns to apply find/replace on
-/// `find_text`     – text to find
-/// `replace_text`  – replacement text
-/// `use_regex`     – treat `find_text` as a regex
-/// `type_col`      – column to cast (empty string = skip)
-/// `type_target`   – target dtype: "int" | "float" | "str" | "datetime" | "date"
+///   1. column-filter → 2. row-filter → 3. fillna → 4. dedup → 5. trim → 6. find/replace → 7. type-cast
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub async fn clean_data(
+async fn clean_data(
+    filter_cols: Vec<String>,
+    row_filter_col: String,
+    row_filter_op: String,
+    row_filter_val: String,
     fillna_col: String,
     fillna_val: String,
     dedup_cols: Vec<String>,
@@ -288,87 +294,149 @@ pub async fn clean_data(
     type_col: String,
     type_target: String,
 ) -> ApiResult<ChartPayload> {
-    let guard = GLOBAL_DF.lock().unwrap();
-    match guard.as_ref() {
-        None => ApiResult::failure("No data loaded."),
-        Some(df) => match commands::clean_data_impl(
-            df,
-            &fillna_col,
-            &fillna_val,
-            &dedup_cols,
-            &trim_cols,
-            &fr_cols,
-            &find_text,
-            &replace_text,
-            use_regex,
-            &type_col,
-            &type_target,
-        ) {
-            Ok(result_df) => match df_to_payload(&result_df) {
+    let df = take_df!();
+    CLEAN_HISTORY.lock().unwrap().push(df.clone());
+    match commands::clean_data_impl(
+        &df,
+        &filter_cols,
+        &row_filter_col,
+        &row_filter_op,
+        &row_filter_val,
+        &fillna_col,
+        &fillna_val,
+        &dedup_cols,
+        &trim_cols,
+        &fr_cols,
+        &find_text,
+        &replace_text,
+        use_regex,
+        &type_col,
+        &type_target,
+    ) {
+        Ok(result_df) => {
+            // Persist cleaned result so the next clean operation continues from
+            // the latest state instead of reusing the original loaded DataFrame.
+            *GLOBAL_DF.lock().unwrap() = Some(result_df.clone());
+            match df_to_payload(&result_df, Some(PREVIEW_LIMIT)) {
                 Ok(p) => ApiResult::success(p),
                 Err(e) => ApiResult::failure(e.to_string()),
-            },
-            Err(e) => ApiResult::failure(e.to_string()),
-        },
+            }
+        }
+        Err(e) => {
+            // Revert push-on-entry when clean failed.
+            CLEAN_HISTORY.lock().unwrap().pop();
+            ApiResult::failure(e.to_string())
+        }
+    }
+}
+
+/// Undo the last cleaning step.
+#[tauri::command]
+async fn undo_clean() -> ApiResult<ChartPayload> {
+    let prev = {
+        let mut history = CLEAN_HISTORY.lock().unwrap();
+        match history.pop() {
+            None => return ApiResult::failure("No clean step to undo."),
+            Some(df) => df,
+        }
+    };
+
+    *GLOBAL_DF.lock().unwrap() = Some(prev.clone());
+    match df_to_payload(&prev, Some(PREVIEW_LIMIT)) {
+        Ok(p) => ApiResult::success(p),
+        Err(e) => ApiResult::failure(e.to_string()),
+    }
+}
+
+/// Rollback all cleaning changes and restore the DataFrame to the initial
+/// state captured at the latest `load_file` call.
+#[tauri::command]
+async fn rollback_clean() -> ApiResult<ChartPayload> {
+    let original = {
+        let guard = ORIGINAL_DF.lock().unwrap();
+        match guard.as_ref() {
+            None => return ApiResult::failure("No original data snapshot. Please load a file first."),
+            Some(df) => df.clone(),
+        }
+    };
+
+    *GLOBAL_DF.lock().unwrap() = Some(original.clone());
+    CLEAN_HISTORY.lock().unwrap().clear();
+    match df_to_payload(&original, Some(PREVIEW_LIMIT)) {
+        Ok(p) => ApiResult::success(p),
+        Err(e) => ApiResult::failure(e.to_string()),
     }
 }
 
 /// GroupBy aggregation: group by `group_cols`, aggregate `agg_col` with `agg_func`.
 #[tauri::command]
-pub async fn groupby_agg(
+async fn groupby_agg(
     group_cols: Vec<String>,
     agg_col: String,
     agg_func: String,
 ) -> ApiResult<ChartPayload> {
-    let guard = GLOBAL_DF.lock().unwrap();
-    match guard.as_ref() {
-        None => ApiResult::failure("No data loaded."),
-        Some(df) => match commands::groupby_agg_impl(df, &group_cols, &agg_col, &agg_func) {
-            Ok(result_df) => match df_to_payload(&result_df) {
-                Ok(p) => ApiResult::success(p),
-                Err(e) => ApiResult::failure(e.to_string()),
-            },
+    let df = take_df!();
+    match commands::groupby_agg_impl(&df, &group_cols, &agg_col, &agg_func) {
+        Ok(result_df) => match df_to_payload(&result_df, Some(CHART_LIMIT)) {
+            Ok(p) => ApiResult::success(p),
             Err(e) => ApiResult::failure(e.to_string()),
         },
+        Err(e) => ApiResult::failure(e.to_string()),
     }
 }
 
 /// Fetch Gantt chart data: returns rows with task, start, end, and optional group/milestone columns.
 #[tauri::command]
-pub async fn fetch_gantt_data(
+async fn fetch_gantt_data(
     task_col: String,
     start_col: String,
     end_col: String,
+    project_col: Option<String>,
     color_col: Option<String>,
     milestone_col: Option<String>,
+    detail_col: Option<String>,
 ) -> ApiResult<ChartPayload> {
-    let guard = GLOBAL_DF.lock().unwrap();
-    match guard.as_ref() {
-        None => ApiResult::failure("No data loaded."),
-        Some(df) => {
-            let mut keep_cols: Vec<String> =
-                vec![task_col.clone(), start_col.clone(), end_col.clone()];
-            if let Some(ref c) = color_col {
-                keep_cols.push(c.clone());
-            }
-            if let Some(ref c) = milestone_col {
-                keep_cols.push(c.clone());
-            }
-            // Keep only existing columns to avoid Polars error
-            let valid: Vec<&str> = keep_cols
-                .iter()
-                .filter(|c| df.get_column_names().contains(&c.as_str()))
-                .map(|c| c.as_str())
-                .collect();
+    let df = take_df!();
+    let mut keep_cols: Vec<String> =
+        vec![task_col.clone(), start_col.clone(), end_col.clone()];
+    if let Some(ref c) = project_col {
+        keep_cols.push(c.clone());
+    }
+    if let Some(ref c) = color_col {
+        keep_cols.push(c.clone());
+    }
+    if let Some(ref c) = milestone_col {
+        keep_cols.push(c.clone());
+    }
+    if let Some(ref c) = detail_col {
+        keep_cols.push(c.clone());
+    }
+    // Keep only existing columns to avoid Polars error
+    let column_names = df.get_column_names();
+    let valid: Vec<&str> = keep_cols
+        .iter()
+        .filter(|c| column_names.iter().any(|n| n.as_str() == c.as_str()))
+        .map(|c| c.as_str())
+        .collect();
 
-            match df.select(valid) {
-                Ok(result_df) => match df_to_payload(&result_df) {
-                    Ok(p) => ApiResult::success(p),
-                    Err(e) => ApiResult::failure(e.to_string()),
-                },
-                Err(e) => ApiResult::failure(e.to_string()),
-            }
-        }
+    match df.select(valid) {
+        Ok(result_df) => match df_to_payload(&result_df, None) {
+            Ok(p) => ApiResult::success(p),
+            Err(e) => ApiResult::failure(e.to_string()),
+        },
+        Err(e) => ApiResult::failure(e.to_string()),
+    }
+}
+
+/// Save the current DataFrame (or cleaned result) to a file.
+/// `format_hint` is ignored — the extension in `path` determines the format.
+/// Supports: `.csv`, `.xlsx`
+#[tauri::command]
+async fn save_file(path: String) -> ApiResult<String> {
+    let df = take_df!();
+    match commands::save_file_impl(&df, &path) {
+        Ok(()) => ApiResult::success(path),
+        Err(e) => ApiResult::failure(e.to_string()),
     }
 }
 
@@ -388,8 +456,11 @@ pub fn run() {
             fetch_chart_data,
             pivot_data,
             clean_data,
+            undo_clean,
+            rollback_clean,
             groupby_agg,
             fetch_gantt_data,
+            save_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
