@@ -15,6 +15,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '../stores/dataStore'
 import BiGanttChart from '../components/BiGanttChart.vue'
+import { ECHARTS_THEME_OPTIONS } from '../utils/echartsTheme'
 import type { ChartPayload } from '../utils/chartAdapter'
 
 const dataStore = useDataStore()
@@ -31,12 +32,17 @@ const detailCol = ref('')
 
 const loading = ref(false)
 const ganttPayload = ref<ChartPayload | null>(null)
+const configCollapsed = ref(false)
+
+const configSpan = computed(() => (configCollapsed.value ? 1 : 7))
+const contentSpan = computed(() => (configCollapsed.value ? 23 : 17))
 
 const showTaskDetails = ref(true)
 const showDuration = ref(true)
 const sortByStart = ref(true)
 const autoNumber = ref(true)
 const granularity = ref<'day' | 'week' | 'month' | 'quarter' | 'year'>('month')
+const barLabel = ref<'none' | 'name' | 'duration' | 'dates' | 'nameAndDuration' | 'detail'>('none')
 
 // ─── 统计摘要 ────────────────────────────────────────────────────────────────
 
@@ -149,10 +155,17 @@ async function loadGanttData() {
 
 <template>
   <div class="gantt-analysis-view">
-    <el-row :gutter="24">
+    <el-row :gutter="24" style="height: 100%;">
       <!-- 左侧：配置面板 -->
-      <el-col :span="7">
-        <el-card class="panel-card" header="甘特图配置">
+      <el-col :span="configSpan" class="config-col">
+        <div v-if="!configCollapsed" class="config-scroll">
+        <el-card class="panel-card" shadow="never">
+          <template #header>
+            <div class="panel-header">
+              <span>甘特图配置</span>
+              <el-button text class="panel-collapse-btn" title="收起" @click="configCollapsed = true">‹</el-button>
+            </div>
+          </template>
           <el-form label-width="90px" label-position="left" size="small" :disabled="!dataStore.hasData">
 
             <el-form-item label="任务名称列">
@@ -225,6 +238,17 @@ async function loadGanttData() {
               <el-switch v-model="showTaskDetails" />
             </el-form-item>
 
+            <el-form-item label="横道标签">
+              <el-select v-model="barLabel" style="width:100%">
+                <el-option label="不显示" value="none" />
+                <el-option label="任务名" value="name" />
+                <el-option label="天数" value="duration" />
+                <el-option label="日期区间" value="dates" />
+                <el-option label="名称+天数" value="nameAndDuration" />
+                <el-option label="详情列" value="detail" />
+              </el-select>
+            </el-form-item>
+
             <el-form-item>
               <el-button type="primary" :loading="loading" @click="loadGanttData" style="width:100%">
                 生成甘特图
@@ -244,13 +268,34 @@ async function loadGanttData() {
             </template>
           </el-form>
         </el-card>
+        </div>
+
+        <div v-else class="collapsed-handle" title="展开参数" @click="configCollapsed = false">›</div>
       </el-col>
 
       <!-- 右侧：甘特图 -->
-      <el-col :span="17">
-        <el-card class="panel-card" header="甘特图（横道图）">
-          <el-empty v-if="!dataStore.hasData" description="请先在「数据加载」页面上传数据" :image-size="100" />
-          <el-empty v-else-if="!ganttPayload" description="请配置字段并点击「生成甘特图」" :image-size="80" />
+      <el-col :span="contentSpan" class="content-col">
+        <el-card class="panel-card gantt-card" shadow="never">
+          <template #header>
+            <div class="chart-card-header">
+              <span>甘特图（横道图）</span>
+              <el-select
+                :model-value="dataStore.currentTheme"
+                size="small"
+                style="width: 130px"
+                placeholder="图表主题"
+                @update:model-value="dataStore.setTheme"
+              >
+                <el-option v-for="opt in ECHARTS_THEME_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+            </div>
+          </template>
+          <div v-if="!dataStore.hasData" class="display-empty">
+            <el-empty description="暂无数据，请先加载数据" :image-size="100" />
+          </div>
+          <div v-else-if="!ganttPayload" class="display-empty">
+            <el-empty description="暂无数据，请先加载数据" :image-size="80" />
+          </div>
           <BiGanttChart v-else :rows="ganttPayload.rows" :task-col="taskCol" :start-col="startCol" :end-col="endCol"
             :project-col="projectCol || undefined" :color-col="colorCol || undefined"
             :milestone-col="milestoneCol || undefined" :detail-col="detailCol || undefined" :options="{
@@ -259,7 +304,8 @@ async function loadGanttData() {
               sortByStart,
               autoNumber,
               granularity,
-            }" :loading="loading" height="520px" />
+              barLabel,
+            }" :loading="loading" height="100%" />
         </el-card>
       </el-col>
     </el-row>
@@ -269,9 +315,100 @@ async function loadGanttData() {
 <style scoped>
 .gantt-analysis-view {
   height: 100%;
+  overflow: hidden;
 }
 
 .panel-card {
   background: var(--el-bg-color-overlay);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.collapse-trigger {
+  font-size: 24px;
+  padding: 0;
+  line-height: 1;
+}
+
+.panel-collapse-btn {
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  height: auto;
+}
+
+.collapsed-handle {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  font-size: 24px;
+  line-height: 1;
+  height: 100%;
+  user-select: none;
+}
+
+.collapsed-handle:hover {
+  color: var(--el-color-primary);
+}
+
+.content-col {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.config-col {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.config-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.gantt-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gantt-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.display-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.el-card__header) {
+  padding: 8px 16px;
 }
 </style>

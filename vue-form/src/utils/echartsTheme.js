@@ -1,25 +1,4 @@
-export interface EChartsThemeProfile {
-    name: string
-    palette: string[]
-    backgroundColor: string
-    titleColor: string
-    subtitleColor: string
-    textColor: string
-    axisLineColor: string
-    axisLabelColor: string
-    splitLineColor: string
-    toolboxColor: string
-    toolboxEmphasisColor: string
-    tooltipAxisColor: string
-    isDark: boolean
-}
-
-export interface EChartsThemeOption {
-    label: string
-    value: string
-}
-
-const PROFILES: Record<string, Partial<EChartsThemeProfile>> = {
+const PROFILES = {
     default: {
         palette: ['#c23531', '#2f4554', '#61a0a8', '#d48265', '#91c7ae', '#749f83', '#ca8622', '#bda29a', '#6e7074', '#546570', '#c4ccd3'],
         backgroundColor: 'rgba(0,0,0,0)',
@@ -98,11 +77,9 @@ const PROFILES: Record<string, Partial<EChartsThemeProfile>> = {
         tooltipAxisColor: '#cccccc',
         isDark: true,
     },
-}
-
-const RUNTIME_REGISTERED_THEMES = new Set(['dark', 'vintage', 'macarons', 'shine', 'roma', 'infographic'])
-
-export const ECHARTS_THEME_OPTIONS: EChartsThemeOption[] = [
+};
+const RUNTIME_REGISTERED_THEMES = new Set(['dark', 'vintage', 'macarons', 'shine', 'roma', 'infographic']);
+export const ECHARTS_THEME_OPTIONS = [
     { label: '默认主题', value: 'default' },
     { label: 'Dark', value: 'dark' },
     { label: 'Vintage', value: 'vintage' },
@@ -117,19 +94,17 @@ export const ECHARTS_THEME_OPTIONS: EChartsThemeOption[] = [
     { label: 'Shine', value: 'shine' },
     { label: 'Purple Passion', value: 'purple-passion' },
     { label: 'Halloween', value: 'halloween' },
-]
-
-export function normalizeThemeName(themeName: string | null | undefined): string {
-    const normalized = String(themeName ?? 'default').trim().toLowerCase()
-    if (normalized === 'v5') return 'default'
-    return PROFILES[normalized] ? normalized : 'default'
+];
+export function normalizeThemeName(themeName) {
+    const normalized = String(themeName ?? 'default').trim().toLowerCase();
+    if (normalized === 'v5')
+        return 'default';
+    return PROFILES[normalized] ? normalized : 'default';
 }
-
-export function getThemeProfile(themeName: string | null | undefined): EChartsThemeProfile {
-    const normalized = normalizeThemeName(themeName)
-    const defaults: Partial<EChartsThemeProfile> = PROFILES.default ?? {}
-    const chosen: Partial<EChartsThemeProfile> = PROFILES[normalized] ?? defaults
-
+export function getThemeProfile(themeName) {
+    const normalized = normalizeThemeName(themeName);
+    const defaults = PROFILES.default ?? {};
+    const chosen = PROFILES[normalized] ?? defaults;
     return {
         name: normalized,
         palette: chosen.palette ?? defaults.palette ?? [],
@@ -144,11 +119,11 @@ export function getThemeProfile(themeName: string | null | undefined): EChartsTh
         toolboxEmphasisColor: chosen.toolboxEmphasisColor ?? defaults.toolboxEmphasisColor ?? '#666666',
         tooltipAxisColor: chosen.tooltipAxisColor ?? defaults.tooltipAxisColor ?? '#cccccc',
         isDark: !!chosen.isDark,
-    }
+    };
 }
-
-export function getEchartsRuntimeThemeName(themeName: string | null | undefined): string | undefined {
-    const normalized = normalizeThemeName(themeName)
-    if (normalized === 'default') return undefined
-    return RUNTIME_REGISTERED_THEMES.has(normalized) ? normalized : undefined
+export function getEchartsRuntimeThemeName(themeName) {
+    const normalized = normalizeThemeName(themeName);
+    if (normalized === 'default')
+        return undefined;
+    return RUNTIME_REGISTERED_THEMES.has(normalized) ? normalized : undefined;
 }

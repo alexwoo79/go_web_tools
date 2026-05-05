@@ -26,6 +26,12 @@ use rust_xlsxwriter::{Format, Workbook};
 use std::borrow::Cow;
 use std::path::Path;
 
+#[derive(Debug, Clone, Copy)]
+enum TemporalKind {
+    Date,
+    DateTime,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. File loading
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,7 +100,117 @@ pub fn load_file_impl(
 
     // Drop fully-null rows and columns
     let df = drop_all_null_cols(df);
+
+    // Auto-cast likely temporal string columns to real Polars Date/Datetime.
+    // This improves downstream default field inference for Gantt and date filters.
+    let df = auto_cast_temporal_columns(df)?;
     Ok(df)
+}
+
+fn auto_cast_temporal_columns(df: DataFrame) -> Result<DataFrame> {
+    let mut candidates: Vec<(String, TemporalKind)> = Vec::new();
+
+    for col in df.get_columns() {
+        if col.dtype() != &DataType::String {
+            continue;
+        }
+        if let Some(kind) = infer_temporal_kind(col) {
+            candidates.push((col.name().to_string(), kind));
+        }
+    }
+
+    if candidates.is_empty() {
+        return Ok(df);
+    }
+
+    let mut lf = df.lazy();
+    for (name, kind) in candidates {
+        let expr = match kind {
+            TemporalKind::Date => col(name.as_str())
+                .str()
+                .to_date(
+                    StrptimeOptions {
+                        format: None,
+                        strict: false,
+                        exact: true,
+                        cache: true,
+                    },
+                )
+                .alias(name.as_str()),
+            TemporalKind::DateTime => col(name.as_str())
+                .str()
+                .to_datetime(
+                    Some(TimeUnit::Milliseconds),
+                    None,
+                    StrptimeOptions {
+                        format: None,
+                        strict: false,
+                        exact: true,
+                        cache: true,
+                    },
+                    lit("raise"),
+                )
+                .alias(name.as_str()),
+        };
+        lf = lf.with_column(expr);
+    }
+
+    lf.collect().map_err(|e| anyhow!("temporal type cast failed: {e}"))
+}
+
+fn infer_temporal_kind(col: &Column) -> Option<TemporalKind> {
+    let re_date = Regex::new(r#"^"?\d{4}[-/]\d{1,2}[-/]\d{1,2}"?$"#).ok()?;
+    let re_datetime = Regex::new(r#"^"?\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?"?$"#).ok()?;
+
+    let name = col.name().to_lowercase();
+    let has_time_hint = [
+        "date", "time", "start", "end", "begin", "finish", "deadline", "due", "milestone", "created", "updated",
+        "日期", "时间", "开始", "结束", "里程碑", "截止",
+    ]
+    .iter()
+    .any(|k| name.contains(k));
+
+    let ca = col.as_materialized_series().str().ok()?;
+    let mut sampled = 0usize;
+    let mut date_hits = 0usize;
+    let mut datetime_hits = 0usize;
+
+    for v in ca {
+        let raw = match v {
+            Some(s) => s.trim(),
+            None => continue,
+        };
+        if raw.is_empty() {
+            continue;
+        }
+
+        sampled += 1;
+        if re_datetime.is_match(raw) {
+            datetime_hits += 1;
+        } else if re_date.is_match(raw) {
+            date_hits += 1;
+        }
+
+        if sampled >= 50 {
+            break;
+        }
+    }
+
+    if sampled < 3 {
+        return None;
+    }
+
+    let threshold = if has_time_hint { 0.45 } else { 0.75 };
+    let datetime_ratio = datetime_hits as f64 / sampled as f64;
+    let date_ratio = (date_hits + datetime_hits) as f64 / sampled as f64;
+
+    if datetime_ratio >= threshold {
+        Some(TemporalKind::DateTime)
+    } else if date_ratio >= threshold {
+        Some(TemporalKind::Date)
+    } else {
+        None
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -371,7 +487,7 @@ fn drop_all_null_cols(df: DataFrame) -> DataFrame {
 
 /// Prepare DataFrame for chart rendering.
 ///
-/// Pipeline: column-filter → sort → topN
+/// Pipeline: sort → topN
 #[allow(clippy::too_many_arguments)]
 pub fn fetch_chart_data_impl(
     df: &DataFrame,
@@ -381,26 +497,8 @@ pub fn fetch_chart_data_impl(
     sort_by: &str,    // "x" | "y" | "none"
     sort_asc: bool,
     top_n: i64,       // 0 = no limit, >0 = top-N, <0 = bottom-N
-    filter_cols: &[String],
 ) -> Result<DataFrame> {
-    // Determine which columns to keep
-    let mut keep: Vec<&str> = if filter_cols.is_empty() {
-        df.get_column_names().iter().map(|c| c.as_str()).collect()
-    } else {
-        let all_names = df.get_column_names();
-        filter_cols
-            .iter()
-            .filter(|c| all_names.iter().any(|n| n.as_str() == c.as_str()))
-            .map(|c| c.as_str())
-            .collect()
-    };
-
-    // Always ensure x and y are present
-    for col in [x_col, y_col] {
-        if !keep.contains(&col) {
-            keep.push(col);
-        }
-    }
+    let mut keep = vec![x_col, y_col];
     if let Some(c) = color_col {
         if !keep.contains(&c) {
             keep.push(c);

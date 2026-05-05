@@ -17,6 +17,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '../stores/dataStore'
 import BiChart from '../components/BiChart.vue'
+import { ECHARTS_THEME_OPTIONS } from '../utils/echartsTheme'
 import { buildChartOption } from '../utils/chartAdapter'
 import type { ChartPayload, ChartType } from '../utils/chartAdapter'
 
@@ -35,6 +36,10 @@ const topnValue = ref(10)
 
 const loading = ref(false)
 const chartPayload = ref<ChartPayload | null>(null)
+const configCollapsed = ref(false)
+
+const configSpan = computed(() => (configCollapsed.value ? 1 : 7))
+const contentSpan = computed(() => (configCollapsed.value ? 23 : 17))
 
 // ─── 图表类型选项 ────────────────────────────────────────────────────────────
 
@@ -118,10 +123,16 @@ async function generateChart() {
 
 <template>
   <div class="chart-analysis-view">
-    <el-row :gutter="24">
+    <el-row :gutter="24" style="height: 100%;">
       <!-- 左侧：控制面板 -->
-      <el-col :span="7">
-        <el-card class="panel-card" header="图表参数">
+      <el-col :span="configSpan">
+        <el-card v-if="!configCollapsed" class="panel-card" shadow="never">
+          <template #header>
+            <div class="panel-header">
+              <span>图表参数</span>
+              <el-button text class="panel-collapse-btn" title="收起" @click="configCollapsed = true">‹</el-button>
+            </div>
+          </template>
           <el-form label-width="80px" label-position="left" size="small" :disabled="!dataStore.hasData">
 
             <el-form-item label="图表类型">
@@ -187,20 +198,37 @@ async function generateChart() {
             </el-text>
           </el-form>
         </el-card>
+
+        <div v-else class="collapsed-handle" title="展开参数" @click="configCollapsed = false">›</div>
       </el-col>
 
       <!-- 右侧：图表显示区 -->
-      <el-col :span="17">
-        <el-card class="panel-card">
+      <el-col :span="contentSpan" class="content-col">
+        <el-card class="panel-card chart-card" shadow="never">
           <template #header>
-            <span>图表预览</span>
-            <el-tag v-if="chartPayload" size="small" style="float:right">
-              {{ chartType.replace('_chart', '').toUpperCase() }}
-            </el-tag>
+            <div class="chart-card-header">
+              <span>图表预览</span>
+              <div class="chart-card-header-actions">
+                <el-select
+                  :model-value="dataStore.currentTheme"
+                  size="small"
+                  style="width: 130px"
+                  placeholder="图表主题"
+                  @update:model-value="dataStore.setTheme"
+                >
+                  <el-option v-for="opt in ECHARTS_THEME_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+                </el-select>
+                <el-tag v-if="chartPayload" size="small">
+                  {{ chartType.replace('_chart', '').toUpperCase() }}
+                </el-tag>
+              </div>
+            </div>
           </template>
 
-          <el-empty v-if="!dataStore.hasData" description="请先在「数据加载」页面上传并加载数据文件" :image-size="100" />
-          <BiChart v-else :option="chartOption" :loading="loading" height="520px" />
+          <div v-if="!dataStore.hasData" class="display-empty">
+            <el-empty description="暂无数据，请先加载数据" :image-size="100" />
+          </div>
+          <BiChart v-else :option="chartOption" :loading="loading" height="100%" />
         </el-card>
       </el-col>
     </el-row>
@@ -210,9 +238,92 @@ async function generateChart() {
 <style scoped>
 .chart-analysis-view {
   height: 100%;
+  overflow: hidden;
 }
 
 .panel-card {
   background: var(--el-bg-color-overlay);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chart-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-trigger {
+  font-size: 24px;
+  padding: 0;
+  line-height: 1;
+}
+
+.panel-collapse-btn {
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  height: auto;
+}
+
+.collapsed-handle {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  font-size: 24px;
+  line-height: 1;
+  height: 100%;
+  user-select: none;
+}
+
+.collapsed-handle:hover {
+  color: var(--el-color-primary);
+}
+
+.content-col {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.display-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.el-card__header) {
+  padding: 8px 16px;
 }
 </style>

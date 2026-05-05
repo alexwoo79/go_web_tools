@@ -26,6 +26,22 @@ html.dark {
   color-scheme: dark;
 }
 
+html:not(.dark) {
+  --app-sidebar-hover-bg: rgba(15, 23, 42, 0.06);
+  --app-sidebar-hover-color: var(--el-text-color-primary);
+}
+
+html.dark {
+  --app-sidebar-hover-bg: rgba(255, 255, 255, 0.08);
+  --app-sidebar-hover-color: var(--el-text-color-primary);
+}
+
+.sidebar-menu .el-menu-item:hover,
+.sidebar-menu .el-sub-menu__title:hover {
+  background-color: var(--app-sidebar-hover-bg) !important;
+  color: var(--app-sidebar-hover-color) !important;
+}
+
 /* 滚动条美化 */
 ::-webkit-scrollbar {
   width: 6px;

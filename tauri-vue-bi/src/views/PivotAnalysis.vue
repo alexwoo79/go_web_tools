@@ -10,11 +10,12 @@
 //   3. 渲染透视表（el-table）
 //   4. 可选：将透视结果转为图表（调用 BiChart）
 
-import { ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { ElMessage } from 'element-plus'
 import { useDataStore } from '../stores/dataStore'
 import BiChart from '../components/BiChart.vue'
+import { ECHARTS_THEME_OPTIONS } from '../utils/echartsTheme'
 import type { ChartPayload } from '../utils/chartAdapter'
 import type { EChartsOption, BarSeriesOption } from 'echarts'
 
@@ -29,6 +30,10 @@ const aggFunc = ref<'sum' | 'mean' | 'count' | 'min' | 'max'>('sum')
 
 const loading = ref(false)
 const pivotPayload = ref<ChartPayload | null>(null)
+const configCollapsed = ref(false)
+
+const configSpan = computed(() => (configCollapsed.value ? 1 : 7))
+const contentSpan = computed(() => (configCollapsed.value ? 23 : 17))
 
 // ─── 可选：将透视表渲染为柱状图 ──────────────────────────────────────────────
 const showChart = ref(false)
@@ -106,10 +111,16 @@ function buildPivotChart(payload: ChartPayload) {
 
 <template>
   <div class="pivot-analysis-view">
-    <el-row :gutter="24">
+    <el-row :gutter="24" style="height: 100%;">
       <!-- 左侧：控制面板 -->
-      <el-col :span="7">
-        <el-card class="panel-card" header="透视参数">
+      <el-col :span="configSpan">
+        <el-card v-if="!configCollapsed" class="panel-card" shadow="never">
+          <template #header>
+            <div class="panel-header">
+              <span>透视参数</span>
+              <el-button text class="panel-collapse-btn" title="收起" @click="configCollapsed = true">‹</el-button>
+            </div>
+          </template>
           <el-form label-width="80px" label-position="left" size="small" :disabled="!dataStore.hasData">
 
             <el-form-item label="行分组">
@@ -155,20 +166,40 @@ function buildPivotChart(payload: ChartPayload) {
             </el-text>
           </el-form>
         </el-card>
+
+        <div v-else class="collapsed-handle" title="展开参数" @click="configCollapsed = false">›</div>
       </el-col>
 
       <!-- 右侧：结果展示 -->
-      <el-col :span="17">
+      <el-col :span="contentSpan" class="content-col">
         <!-- 透视图表（可选） -->
-        <el-card v-if="showChart && pivotChartOption" class="panel-card" header="透视图表" style="margin-bottom:16px">
+        <el-card v-if="showChart && pivotChartOption" class="panel-card" style="margin-bottom:16px" shadow="never">
+          <template #header>
+            <div class="chart-card-header">
+              <span>透视图表</span>
+              <el-select
+                :model-value="dataStore.currentTheme"
+                size="small"
+                style="width: 130px"
+                placeholder="图表主题"
+                @update:model-value="dataStore.setTheme"
+              >
+                <el-option v-for="opt in ECHARTS_THEME_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+            </div>
+          </template>
           <BiChart :option="pivotChartOption" :loading="loading" height="300px" />
         </el-card>
 
         <!-- 透视表格 -->
-        <el-card class="panel-card" :header="`透视表（${pivotPayload?.total_rows ?? 0} 行）`">
-          <el-empty v-if="!dataStore.hasData" description="请先加载数据，再执行透视" :image-size="80" />
-          <el-empty v-else-if="!pivotPayload" description="请设置透视参数后点击「执行透视」" :image-size="80" />
-          <el-table v-else :data="pivotPayload.rows" border stripe size="small" max-height="60vh" style="width:100%">
+        <el-card class="panel-card pivot-table-card" :header="`透视表（${pivotPayload?.total_rows ?? 0} 行）`" shadow="never">
+          <div v-if="!dataStore.hasData" class="display-empty">
+            <el-empty description="暂无数据，请先加载数据" :image-size="80" />
+          </div>
+          <div v-else-if="!pivotPayload" class="display-empty">
+            <el-empty description="暂无数据，请先加载数据" :image-size="80" />
+          </div>
+          <el-table v-else :data="pivotPayload.rows" border stripe size="small" style="width:100%" height="100%">
             <el-table-column v-for="col in pivotPayload.columns" :key="col.name" :prop="col.name" :label="col.name"
               min-width="120" show-overflow-tooltip />
           </el-table>
@@ -181,9 +212,87 @@ function buildPivotChart(payload: ChartPayload) {
 <style scoped>
 .pivot-analysis-view {
   height: 100%;
+  overflow: hidden;
 }
 
 .panel-card {
   background: var(--el-bg-color-overlay);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.collapse-trigger {
+  font-size: 24px;
+  padding: 0;
+  line-height: 1;
+}
+
+.panel-collapse-btn {
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  height: auto;
+}
+
+.collapsed-handle {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  font-size: 24px;
+  line-height: 1;
+  height: 100%;
+  user-select: none;
+}
+
+.collapsed-handle:hover {
+  color: var(--el-color-primary);
+}
+
+.content-col {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pivot-table-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pivot-table-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+}
+
+.display-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.el-card__header) {
+  padding: 8px 16px;
 }
 </style>

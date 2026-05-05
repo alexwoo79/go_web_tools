@@ -106,7 +106,7 @@ npm run tauri build
 |-----------------------|----------------------------------------|
 | `load_file`           | 加载 CSV / Excel 文件到全局 DataFrame   |
 | `get_dataframe_info`  | 获取当前 DataFrame 的列信息和前 N 行     |
-| `fetch_chart_data`    | 图表数据：列过滤、排序、TopN             |
+| `fetch_chart_data`    | 图表数据：排序、TopN                     |
 | `pivot_data`          | 多维透视（行分组、列分组、聚合）          |
 | `clean_data`          | 数据清洗流水线                           |
 | `groupby_agg`         | 分组聚合（groupby + agg）               |

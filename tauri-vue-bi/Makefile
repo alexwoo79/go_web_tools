@@ -8,7 +8,7 @@ CYAN  := \033[36m
 YELLOW:= \033[33m
 
 .PHONY: help install dev build bundle dmg test test-rust test-ts lint fmt clean \
-        check-deps icon update-deps
+	check-deps icon update-deps release-check release-tag release-push release
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 默认目标：帮助信息
@@ -22,6 +22,10 @@ help:
 	@printf "  make build        构建前端（vite build + vue-tsc 类型检查）\n"
 	@printf "  make bundle       完整打包桌面应用（生成 .dmg/.app/.deb/.exe 等）\n"
 	@printf "  make dmg          仅构建 macOS DMG 安装包\n"
+	@printf "  make release-check 发布前检查（build + test-rust）\n"
+	@printf "  make release-tag TAG=tauri-vue-bi-v0.1.0   创建发布 tag\n"
+	@printf "  make release-push TAG=tauri-vue-bi-v0.1.0  推送发布 tag 到 GitHub\n"
+	@printf "  make release TAG=tauri-vue-bi-v0.1.0       检查 + 打 tag + 推送\n"
 	@printf "\n$(CYAN)测试$(RESET)\n"
 	@printf "  make test         运行全部测试（Rust + TypeScript）\n"
 	@printf "  make test-rust    仅运行 Rust 单元测试\n"
@@ -83,6 +87,24 @@ dmg:
 	@printf "$(BOLD)构建 macOS DMG 安装包（release 模式）...$(RESET)\n"
 	@uname | grep -q "Darwin" || (printf "$(YELLOW)!$(RESET) 当前非 macOS，无法构建 DMG\n" && exit 1)
 	npm run tauri -- build --bundles dmg
+
+release-check: build test-rust
+	@printf "$(GREEN)✔$(RESET) 发布前检查通过\n"
+
+release-tag:
+	@test -n "$(TAG)" || (printf "$(YELLOW)!$(RESET) 用法: make release-tag TAG=tauri-vue-bi-v0.1.0\n" && exit 1)
+	@git rev-parse --is-inside-work-tree >/dev/null 2>&1 || (printf "$(YELLOW)!$(RESET) 当前目录不在 git 仓库中\n" && exit 1)
+	@git rev-parse "$(TAG)" >/dev/null 2>&1 && (printf "$(YELLOW)!$(RESET) tag $(TAG) 已存在\n" && exit 1) || true
+	@printf "$(BOLD)创建发布 tag: $(TAG)$(RESET)\n"
+	git tag -a "$(TAG)" -m "Release $(TAG)"
+
+release-push:
+	@test -n "$(TAG)" || (printf "$(YELLOW)!$(RESET) 用法: make release-push TAG=tauri-vue-bi-v0.1.0\n" && exit 1)
+	@printf "$(BOLD)推送 tag 到 origin: $(TAG)$(RESET)\n"
+	git push origin "$(TAG)"
+
+release: release-check release-tag release-push
+	@printf "$(GREEN)✔$(RESET) Release tag 已推送，GitHub Actions 将开始构建并发布多平台安装包\n"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 测试

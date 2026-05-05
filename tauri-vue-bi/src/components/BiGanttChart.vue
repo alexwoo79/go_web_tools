@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import type { EChartsOption } from 'echarts'
 import BiChart from './BiChart.vue'
+import { useDataStore } from '../stores/dataStore'
+import { getThemeProfile } from '../utils/echartsTheme'
 
 interface GanttRow {
     [key: string]: string | number | null
@@ -14,6 +16,8 @@ interface GanttOptions {
     autoNumber?: boolean
     darkTheme?: boolean
     granularity?: 'day' | 'week' | 'month' | 'quarter' | 'year'
+    /** 横道上显示的内容：none=不显示 name=任务名 duration=天数 dates=日期区间 nameAndDuration=名称+天数 detail=详情列 */
+    barLabel?: 'none' | 'name' | 'duration' | 'dates' | 'nameAndDuration' | 'detail'
 }
 
 interface Props {
@@ -48,9 +52,10 @@ const props = withDefaults(defineProps<Props>(), {
     height: '480px',
 })
 
+const dataStore = useDataStore()
+
 const DAY_MS = 24 * 3600 * 1000
 const NOW_TS = Date.now()
-const PALETTE = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc']
 
 function floorToDay(ts: number) {
     const d = new Date(ts)
@@ -134,31 +139,6 @@ function minIntervalFor(granularity: string) {
         case 'year': return 365 * DAY_MS
         default: return 28 * DAY_MS
     }
-}
-
-function pad2(value: number) {
-    return String(value).padStart(2, '0')
-}
-
-function isoWeekNo(date: Date) {
-    const dt = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
-    const dayNum = dt.getUTCDay() || 7
-    dt.setUTCDate(dt.getUTCDate() + 4 - dayNum)
-    const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1))
-    return Math.ceil((((dt.getTime() - yearStart.getTime()) / DAY_MS) + 1) / 7)
-}
-
-function formatTimelineLabel(ts: number, granularity: string) {
-    const d = new Date(ts)
-    const y = d.getFullYear()
-    const m = pad2(d.getMonth() + 1)
-    const day = pad2(d.getDate())
-    if (granularity === 'day') return `${m}-${day}`
-    if (granularity === 'month') return `${y}-${m}`
-    if (granularity === 'week') return `${y}-W${pad2(isoWeekNo(d))}`
-    if (granularity === 'quarter') return `${y}-Q${Math.floor(d.getMonth() / 3) + 1}`
-    if (granularity === 'year') return String(y)
-    return `${y}-${m}`
 }
 
 function buildGanttDataViewTable(rows: GanttRow[], taskCol: string, startCol: string, endCol: string, showDuration: boolean, projectCol?: string, detailCol?: string) {
@@ -287,20 +267,43 @@ const chartOption = computed<EChartsOption | null>(() => {
     const granularity = props.options?.granularity ?? 'month'
     const showDuration = props.options?.showDuration !== false
     const showTaskDetails = props.options?.showTaskDetails !== false
+    const barLabel = props.options?.barLabel ?? 'none'
     const timelineRows = buildTimelineRows(props.rows)
     if (timelineRows.length === 0) return null
 
+    // 从当前主题取调色盘和颜色配置
+    const profile = getThemeProfile(dataStore.currentTheme)
+    const palette = profile.palette.length > 0 ? profile.palette : ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc']
+    const axisLabelColor = profile.axisLabelColor
+    const axisLineColor = profile.axisLineColor
+    const splitLineColor = profile.splitLineColor
+    const timeGridLineColor = 'rgba(148,163,184,0.35)'
+    const barTextColor = '#ffffff'
+    const detailLabel = String(props.detailCol ?? '详情')
+
     const taskLabels = timelineRows.map((row) => row.rowLabel)
     const colorGroups = Array.from(new Set(timelineRows.map((row) => row.colorGroup)))
-    const colorMap = Object.fromEntries(colorGroups.map((group, index) => [group, PALETTE[index % PALETTE.length]])) as Record<string, string>
+    const colorMap = Object.fromEntries(colorGroups.map((group, index) => [group, palette[index % palette.length]])) as Record<string, string>
 
     const barData = timelineRows.map((row, index) => ({
         name: row.taskName,
-        value: [index, row.start, row.end, row.taskName, row.projectName, row.durationDays, row.detail, row.rowType],
-        itemStyle: {
-            color: colorMap[row.colorGroup] ?? PALETTE[0],
-            opacity: row.rowType === 'project' ? 0.98 : 0.86,
-        },
+        // value: [idx, start, end, task, project, duration, detail, rowType, color, barLabelMode, textColor, showDuration, showTaskDetails, detailLabel]
+        value: [
+            index,
+            row.start,
+            row.end,
+            row.taskName,
+            row.projectName,
+            row.durationDays,
+            row.detail,
+            row.rowType,
+            colorMap[row.colorGroup] ?? palette[0],
+            barLabel,
+            barTextColor,
+            showDuration ? 1 : 0,
+            showTaskDetails ? 1 : 0,
+            detailLabel,
+        ],
     }))
 
     const milestoneData = props.milestoneCol
@@ -318,9 +321,49 @@ const chartOption = computed<EChartsOption | null>(() => {
 
     const starts = timelineRows.map((row) => row.start)
     const ends = timelineRows.map((row) => row.end)
+    const axisMin = floorTo(Math.min(Math.min(...starts), NOW_TS), granularity)
+    const axisMax = ceilTo(Math.max(Math.max(...ends), NOW_TS), granularity)
+    const firstLabel = taskLabels[0] ?? ''
+    const lastLabel = taskLabels[taskLabels.length - 1] ?? ''
+    const dataViewHtml = buildGanttDataViewTable(
+        props.rows,
+        props.taskCol,
+        props.startCol,
+        props.endCol,
+        showDuration,
+        props.projectCol,
+        props.detailCol,
+    )
+    // 导出 HTML 时不能依赖组件闭包变量，这里使用“自包含函数”返回固定 HTML。
+    const dataViewOptionToContent = new Function(
+        `return ${JSON.stringify(dataViewHtml)}`,
+    ) as () => string
+    // 生成“自包含”时间格式化函数，避免导出 HTML 时依赖组件闭包变量
+    const timeLabelFormatter = new Function(
+        'value',
+        `
+        const d = new Date(value)
+        const y = d.getFullYear()
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const dd = String(d.getDate()).padStart(2, '0')
+        const g = '${granularity}'
+        if (g === 'day') return mm + '-' + dd
+        if (g === 'month') return y + '-' + mm
+        if (g === 'week') {
+            const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+            const dayNum = dt.getUTCDay() || 7
+            dt.setUTCDate(dt.getUTCDate() + 4 - dayNum)
+            const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1))
+            const weekNo = Math.ceil((((dt.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+            return y + '-W' + String(weekNo).padStart(2, '0')
+        }
+        if (g === 'quarter') return y + '-Q' + (Math.floor(d.getMonth() / 3) + 1)
+        if (g === 'year') return String(y)
+        return y + '-' + mm
+        `,
+    ) as (value: number) => string
 
     return {
-        backgroundColor: 'transparent',
         toolbox: {
             show: true,
             right: 12,
@@ -332,7 +375,7 @@ const chartOption = computed<EChartsOption | null>(() => {
                     title: '数据视图',
                     lang: ['数据视图', '关闭', '刷新'],
                     readOnly: true,
-                    optionToContent: () => buildGanttDataViewTable(props.rows, props.taskCol, props.startCol, props.endCol, showDuration, props.projectCol, props.detailCol),
+                    optionToContent: dataViewOptionToContent,
                 },
                 saveAsImage: { title: '保存图片' },
             },
@@ -343,26 +386,35 @@ const chartOption = computed<EChartsOption | null>(() => {
                 const start = new Date(value[1]).toLocaleDateString('zh-CN')
                 const end = new Date(value[2]).toLocaleDateString('zh-CN')
                 const projectLine = value[7] === 'project' ? '<br/>项目汇总条' : (value[4] ? '<br/>项目: ' + value[4] : '')
-                const detailLine = showTaskDetails && value[6] ? `<br/>${String(props.detailCol ?? '详情')}: ${value[6]}` : ''
-                return `<b>${value[3]}</b>${projectLine}<br/>开始: ${start}<br/>结束: ${end}${showDuration ? '<br/>周期(天): ' + value[5] : ''}${detailLine}`
+                const hasDuration = Number(value[11]) === 1
+                const hasDetail = Number(value[12]) === 1
+                const detailLine = hasDetail && value[6] ? `<br/>${String(value[13] ?? '详情')}: ${value[6]}` : ''
+                return `<b>${value[3]}</b>${projectLine}<br/>开始: ${start}<br/>结束: ${end}${hasDuration ? '<br/>周期(天): ' + value[5] : ''}${detailLine}`
             },
         },
         grid: { left: 180, right: 60, top: 20, bottom: 60 },
         xAxis: {
             type: 'time',
-            min: floorTo(Math.min(...starts), granularity),
-            max: ceilTo(Math.max(...ends), granularity),
+            min: axisMin,
+            max: axisMax,
             minInterval: minIntervalFor(granularity),
-            axisLabel: { formatter: (value: number) => formatTimelineLabel(value, granularity) },
+            axisLabel: {
+                formatter: timeLabelFormatter,
+                color: axisLabelColor,
+            },
+            axisLine: { lineStyle: { color: axisLineColor } },
+            splitLine: { show: true, lineStyle: { color: timeGridLineColor, type: 'dashed', width: 1 } },
         },
         yAxis: {
             type: 'category',
             inverse: true,
             data: taskLabels,
-            axisLabel: { width: 160, overflow: 'truncate' },
+            axisLabel: { width: 160, overflow: 'truncate', color: axisLabelColor },
+            axisLine: { lineStyle: { color: axisLineColor } },
+            splitLine: { lineStyle: { color: splitLineColor } },
         },
         dataZoom: [
-            { type: 'slider', xAxisIndex: 0, bottom: 10, labelFormatter: (value: number) => formatTimelineLabel(value, granularity) },
+            { type: 'slider', xAxisIndex: 0, bottom: 10, labelFormatter: timeLabelFormatter },
             { type: 'inside', xAxisIndex: 0, zoomOnMouseWheel: false, moveOnMouseMove: false },
         ],
         series: [
@@ -374,17 +426,56 @@ const chartOption = computed<EChartsOption | null>(() => {
                     const start = api.coord([api.value(1), categoryIndex])
                     const end = api.coord([api.value(2), categoryIndex])
                     const rowType = api.value(7)
-                    const height = api.size([0, 1])[1] * (rowType === 'project' ? 0.76 : 0.56)
-                    return {
+                    const barHeight = api.size([0, 1])[1] * (rowType === 'project' ? 0.76 : 0.56)
+                    const barWidth = Math.max(end[0] - start[0], 2)
+                    const barColor = String(api.value(8) ?? '#5470c6')
+
+                    const children: any[] = [{
                         type: 'rect',
                         shape: {
                             x: start[0],
-                            y: start[1] - height / 2,
-                            width: Math.max(end[0] - start[0], 2),
-                            height,
+                            y: start[1] - barHeight / 2,
+                            width: barWidth,
+                            height: barHeight,
                         },
-                        style: api.style(),
+                        style: {
+                            fill: barColor,
+                            opacity: rowType === 'project' ? 0.98 : 0.86,
+                        },
+                    }]
+
+                    // 横道标签
+                    const labelMode = String(api.value(9) ?? 'none')
+                    if (labelMode !== 'none' && barWidth > 24) {
+                        const taskName = String(api.value(3))
+                        const durationDays = api.value(5)
+                        const detail = String(api.value(6) ?? '')
+                        const textColor = String(api.value(10) ?? '#ffffff')
+                        const fmt = (ts: number) => new Date(ts).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+                        let text = ''
+                        if (labelMode === 'name') text = taskName
+                        else if (labelMode === 'duration') text = `${durationDays}天`
+                        else if (labelMode === 'dates') text = `${fmt(api.value(1))}~${fmt(api.value(2))}`
+                        else if (labelMode === 'nameAndDuration') text = `${taskName} (${durationDays}天)`
+                        else if (labelMode === 'detail') text = detail || taskName
+
+                        children.push({
+                            type: 'text',
+                            style: {
+                                text,
+                                x: start[0] + 5,
+                                y: start[1],
+                                textAlign: 'left',
+                                textVerticalAlign: 'middle',
+                                fill: textColor,
+                                fontSize: 11,
+                                width: barWidth - 10,
+                                overflow: 'truncate',
+                            },
+                        })
                     }
+
+                    return { type: 'group', children }
                 },
                 encode: { x: [1, 2], y: 0 },
                 data: barData,
@@ -396,15 +487,31 @@ const chartOption = computed<EChartsOption | null>(() => {
                 tooltip: { formatter: (p: any) => `🏁 里程碑: <b>${p.name}</b>` },
             }] : []),
             {
-                name: '今天',
-                type: 'line',
+                // 独立 Today 参考线 series（真实线段），避免 markLine 在部分环境不渲染
+                name: 'TodayRef',
+                type: 'line' as const,
+                data: firstLabel && lastLabel
+                    ? [[NOW_TS, firstLabel], [NOW_TS, lastLabel]]
+                    : [],
+                showSymbol: false,
+                silent: true,
+                tooltip: { show: false },
+                lineStyle: { color: '#ef4444', type: 'dashed', width: 1.6 },
+                z: 50,
+                connectNulls: true,
                 markLine: {
                     symbol: ['none', 'none'],
-                    label: { show: true, formatter: 'Today' },
-                    lineStyle: { color: '#ef4444', type: 'dashed', width: 1.2 },
+                    silent: true,
+                    label: {
+                        show: true,
+                        formatter: 'Today',
+                        position: 'insideStartTop',
+                        color: '#ef4444',
+                        fontSize: 11,
+                    },
+                    lineStyle: { color: '#ef4444', type: 'dashed', width: 1.6 },
                     data: [{ xAxis: NOW_TS }],
                 },
-                data: [],
             },
         ],
     }
@@ -412,5 +519,5 @@ const chartOption = computed<EChartsOption | null>(() => {
 </script>
 
 <template>
-    <BiChart :option="chartOption" :loading="props.loading" :height="props.height" theme="dark" />
+    <BiChart :option="chartOption" :loading="props.loading" :height="props.height" />
 </template>

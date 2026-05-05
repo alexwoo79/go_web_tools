@@ -17,6 +17,9 @@ import type { EChartsOption } from 'echarts'
 import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { writeFile } from '@tauri-apps/plugin-fs'
 import { ElMessage } from 'element-plus'
+import { Loading } from '@element-plus/icons-vue'
+import { useDataStore } from '../stores/dataStore'
+import { applyThemeProfile, getThemeProfile } from '../utils/echartsTheme'
 
 interface Props {
   /** ECharts option 配置对象 */
@@ -25,8 +28,6 @@ interface Props {
   loading?: boolean
   /** 图表容器高度（CSS 值，如 "400px" 或 "60vh"） */
   height?: string
-  /** 图表主题：'dark' | 'light'（留空使用全局主题） */
-  theme?: string
   /** 是否自动调整尺寸（默认 true） */
   autoresize?: boolean
 }
@@ -34,8 +35,22 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   height: '420px',
-  theme: 'dark',
   autoresize: true,
+})
+
+const dataStore = useDataStore()
+
+// 计算不透明的有效背景色：部分主题 backgroundColor 为 transparent，
+// 若直接使用则页面明暗主题会透过来影响图表外观。
+// 规则：若主题背景为透明，按 isDark 选用兜底实色，确保图表完全自包含。
+const TRANSPARENT_VALUES = new Set(['transparent', 'rgba(0,0,0,0)', 'rgba(252,252,252,0)', ''])
+const chartBgColor = computed(() => {
+  const profile = getThemeProfile(dataStore.currentTheme)
+  const bg = (profile.backgroundColor ?? '').trim()
+  if (TRANSPARENT_VALUES.has(bg)) {
+    return profile.isDark ? '#1e1e2e' : '#ffffff'
+  }
+  return bg
 })
 
 const chartRef = ref<InstanceType<typeof VChart> | null>(null)
@@ -63,23 +78,41 @@ function textToBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text)
 }
 
-function sanitizeOptionForHtml(option: EChartsOption): EChartsOption {
-  const raw = JSON.parse(
-    JSON.stringify(option, (_key, value) => (typeof value === 'function' ? undefined : value))
-  ) as any
+// 使用纯 ASCII 占位符，JSON.stringify 不会转义它，正则可以可靠匹配
+const FUNC_PLACEHOLDER_RE = /"__ECFN_(\d+)__"/g
 
-  if (raw.toolbox?.feature) {
-    delete raw.toolbox.feature.mySaveAsImage
-    delete raw.toolbox.feature.mySaveAsHtml
-    raw.toolbox.feature.saveAsImage = raw.toolbox.feature.saveAsImage ?? { title: '保存图片' }
+// 将 option 序列化为 JS 代码字符串，保留函数体（用于 HTML 导出）
+function serializeOptionToJs(option: EChartsOption): string {
+  const fnStore: string[] = []
+
+  // 第一步：将函数替换为 ASCII 占位符字符串（JSON.stringify 不转义）
+  const withPlaceholders = JSON.stringify(option, (_key, value) => {
+    if (typeof value === 'function') {
+      const idx = fnStore.length
+      fnStore.push(value.toString())
+      return `__ECFN_${idx}__`
+    }
+    return value
+  })
+
+  // 第二步：清理 toolbox 中的自定义导出按钮
+  const parsed = JSON.parse(withPlaceholders) as any
+  if (parsed.toolbox?.feature) {
+    delete parsed.toolbox.feature.mySaveAsImage
+    delete parsed.toolbox.feature.mySaveAsHtml
+    parsed.toolbox.feature.saveAsImage = parsed.toolbox.feature.saveAsImage ?? { title: '保存图片' }
   }
 
-  return raw
+  // 第三步：重新序列化，替换占位符为真实函数源码
+  // 正则匹配 JSON 字符串值形式的占位符: "__ECFN_0__"（含引号）
+  let jsonStr = JSON.stringify(parsed).replace(/<\//g, '<\\/')
+  jsonStr = jsonStr.replace(FUNC_PLACEHOLDER_RE, (_, idx) => fnStore[Number(idx)])
+  return jsonStr
 }
 
 function buildStandaloneHtml(option: EChartsOption): string {
-  const safeOptionJson = JSON.stringify(sanitizeOptionForHtml(option)).replace(/<\//g, '<\\/')
-  const backgroundColor = (option as any)?.backgroundColor ?? '#1f1f1f'
+  const optionJs = serializeOptionToJs(option)
+  const backgroundColor = (option as any)?.backgroundColor ?? 'transparent'
   const scriptOpen = '<script'
   const scriptClose = '</' + 'script>'
 
@@ -102,8 +135,8 @@ function buildStandaloneHtml(option: EChartsOption): string {
 <body>
   <div id="chart"></div>
   ${scriptOpen}>
-    const chart = echarts.init(document.getElementById('chart'), '${props.theme}');
-    const option = ${safeOptionJson};
+    const chart = echarts.init(document.getElementById('chart'));
+    const option = ${optionJs};
     chart.setOption(option);
     window.addEventListener('resize', () => chart.resize());
   ${scriptClose}
@@ -128,7 +161,7 @@ async function exportChartAsPng() {
     const dataUrl = chart.getDataURL({
       type: 'png',
       pixelRatio: 2,
-      backgroundColor: (props.option as any)?.backgroundColor ?? '#1f1f1f',
+      backgroundColor: chartBgColor.value,
     })
     await writeFile(savePath, dataUrlToBytes(dataUrl))
     ElMessage.success('图表图片已保存')
@@ -138,7 +171,7 @@ async function exportChartAsPng() {
 }
 
 async function exportChartAsHtml() {
-  if (!props.option) {
+  if (!mergedOption.value) {
     ElMessage.error('图表尚未准备好，暂时无法导出 HTML')
     return
   }
@@ -150,7 +183,7 @@ async function exportChartAsHtml() {
     })
     if (!savePath) return
 
-    const html = buildStandaloneHtml(props.option)
+    const html = buildStandaloneHtml(mergedOption.value)
     await writeFile(savePath, textToBytes(html))
     ElMessage.success('图表 HTML 已保存')
   } catch (error) {
@@ -163,13 +196,21 @@ const mergedOption = computed<EChartsOption | null>(() => {
 
   const option = props.option as any
   const toolbox = option.toolbox
-  if (!toolbox) return props.option
+
+  // 将主题完整注入 option，并强制使用不透明背景色（与 wrapper 一致，
+  // 确保切换页面明暗模式时图表渲染完全不受影响）
+  const themed = {
+    ...applyThemeProfile(option, dataStore.currentTheme),
+    backgroundColor: chartBgColor.value,
+  }
+
+  if (!toolbox) return themed as EChartsOption
 
   const feature = toolbox.feature ?? {}
   const { saveAsImage: _saveAsImage, ...restFeatures } = feature
 
   return {
-    ...option,
+    ...themed,
     toolbox: {
       ...toolbox,
       feature: {
@@ -193,7 +234,7 @@ const mergedOption = computed<EChartsOption | null>(() => {
 </script>
 
 <template>
-  <div class="bi-chart-wrapper" :style="{ height: props.height }">
+  <div class="bi-chart-wrapper" :style="{ height: props.height, background: chartBgColor }">
     <!-- 加载状态 -->
     <div v-if="props.loading" class="chart-overlay">
       <el-icon class="is-loading" :size="32">
@@ -203,10 +244,12 @@ const mergedOption = computed<EChartsOption | null>(() => {
     </div>
 
     <!-- 空状态 -->
-    <el-empty v-else-if="isEmpty" description="暂无数据，请先配置图表参数" :image-size="80" />
+    <div v-else-if="isEmpty" class="chart-empty">
+      <el-empty description="暂无数据，请先配置图表参数" :image-size="80" />
+    </div>
 
     <!-- ECharts 图表 -->
-    <VChart ref="chartRef" v-else :option="mergedOption!" :theme="props.theme" :loading="props.loading"
+    <VChart ref="chartRef" v-else :option="mergedOption!" :loading="props.loading"
       :autoresize="props.autoresize" style="width: 100%; height: 100%;" />
   </div>
 </template>
@@ -217,7 +260,15 @@ const mergedOption = computed<EChartsOption | null>(() => {
   width: 100%;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--el-bg-color-overlay);
+  /* background 由 chartBgColor 动态绑定，跟随图表主题而非页面主题 */
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .chart-overlay {

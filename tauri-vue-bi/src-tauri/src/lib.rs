@@ -20,6 +20,7 @@ use std::sync::Mutex;
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use polars::prelude::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ pub fn df_to_payload(df: &DataFrame, limit: Option<usize>) -> Result<ChartPayloa
         .iter()
         .map(|s| ColumnInfo {
             name: s.name().to_string(),
-            dtype: format!("{}", s.dtype()),
+            dtype: infer_payload_dtype(s),
         })
         .collect();
 
@@ -111,6 +112,83 @@ pub fn df_to_payload(df: &DataFrame, limit: Option<usize>) -> Result<ChartPayloa
     }
 
     Ok(ChartPayload { columns, rows, total_rows })
+}
+
+fn infer_payload_dtype(s: &Column) -> String {
+    let real = format!("{}", s.dtype());
+    if s.dtype() != &DataType::String {
+        return real;
+    }
+
+    if let Some(inferred) = infer_temporal_string_dtype(s) {
+        return inferred;
+    }
+    real
+}
+
+fn infer_temporal_string_dtype(s: &Column) -> Option<String> {
+    static DATE_RE_YYYY_MM_DD: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}$").expect("valid date regex"));
+    static DATE_RE_DD_MM_YYYY: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^\d{1,2}[-/]\d{1,2}[-/]\d{4}$").expect("valid date regex"));
+    static DATE_RE_YYYYMMDD: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^\d{8}$").expect("valid date regex"));
+    static DATETIME_RE: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T]\d{1,2}:\d{2}(:\d{2})?(\.\d+)?$").expect("valid datetime regex"));
+
+    let name = s.name().to_lowercase();
+    let has_time_name_hint = [
+        "date", "time", "start", "end", "begin", "finish", "deadline", "due", "milestone", "created", "updated",
+        "日期", "时间", "开始", "结束", "里程碑", "截止",
+    ]
+    .iter()
+    .any(|k| name.contains(k));
+
+    let utf8 = s.as_materialized_series().str().ok()?;
+    let mut sampled = 0usize;
+    let mut date_hits = 0usize;
+    let mut datetime_hits = 0usize;
+
+    for opt in utf8 {
+        let raw = match opt {
+            Some(v) => v.trim(),
+            None => continue,
+        };
+        if raw.is_empty() {
+            continue;
+        }
+
+        sampled += 1;
+
+        if DATETIME_RE.is_match(raw) || (raw.contains(':') && (DATE_RE_YYYY_MM_DD.is_match(raw.split(' ').next().unwrap_or("")) || raw.contains('T'))) {
+            datetime_hits += 1;
+        } else if DATE_RE_YYYY_MM_DD.is_match(raw)
+            || DATE_RE_DD_MM_YYYY.is_match(raw)
+            || DATE_RE_YYYYMMDD.is_match(raw)
+        {
+            date_hits += 1;
+        }
+
+        if sampled >= 50 {
+            break;
+        }
+    }
+
+    if sampled < 3 {
+        return None;
+    }
+
+    let threshold = if has_time_name_hint { 0.45 } else { 0.75 };
+    let datetime_ratio = datetime_hits as f64 / sampled as f64;
+    let date_ratio = (date_hits + datetime_hits) as f64 / sampled as f64;
+
+    if datetime_ratio >= threshold {
+        Some("datetime".to_string())
+    } else if date_ratio >= threshold {
+        Some("date".to_string())
+    } else {
+        None
+    }
 }
 
 /// Extract a single cell from a `Column` as a JSON `Value`.
@@ -217,7 +295,6 @@ async fn get_dataframe_info(limit: Option<usize>) -> ApiResult<ChartPayload> {
 /// `sort_by`    – "x" | "y" | "none"
 /// `sort_asc`   – true = ascending
 /// `top_n`      – 0 = no limit; > 0 = keep top N rows; < 0 = keep bottom N rows
-/// `filter_cols`– list of columns to retain (empty = keep all)
 #[tauri::command]
 async fn fetch_chart_data(
     x_col: String,
@@ -226,7 +303,6 @@ async fn fetch_chart_data(
     sort_by: String,
     sort_asc: bool,
     top_n: i64,
-    filter_cols: Vec<String>,
 ) -> ApiResult<ChartPayload> {
     let df = take_df!();
     match commands::fetch_chart_data_impl(
@@ -237,7 +313,6 @@ async fn fetch_chart_data(
         &sort_by,
         sort_asc,
         top_n,
-        &filter_cols,
     ) {
         Ok(result_df) => match df_to_payload(&result_df, Some(CHART_LIMIT)) {
             Ok(p) => ApiResult::success(p),

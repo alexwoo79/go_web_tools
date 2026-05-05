@@ -66,6 +66,18 @@ const typeTarget = ref<'int' | 'float' | 'str' | 'datetime' | 'date'>('str')
 // 清洗后预览数据
 const cleanedPayload = shallowRef<ChartPayload | null>(null)
 const cleanLoading = ref(false)
+const configCollapsed = ref(false)
+const configSpan = computed(() => (configCollapsed.value ? 1 : 8))
+const contentSpan = computed(() => (configCollapsed.value ? 23 : 16))
+const activeCleanSections = ref<string[]>([
+  'columnFilter',
+  'rowFilter',
+  'fillna',
+  'dedup',
+  'trim',
+  'findReplace',
+  'typeCast',
+])
 
 const rowFilterOpOptions: { label: string; value: RowFilterOp }[] = [
   { label: '等于 (=)', value: 'eq' },
@@ -379,11 +391,22 @@ async function exportFile(format: 'csv' | 'xlsx') {
 
 <template>
   <div class="load-clean-view">
-    <el-row :gutter="24">
+    <el-row :gutter="24" style="height: 100%;">
       <!-- 左侧：加载 + 清洗参数面板 -->
-      <el-col :span="8">
-        <!-- ① 数据加载 -->
-        <el-card class="panel-card" header="① 数据加载">
+      <el-col :span="configSpan" class="config-col">
+        <div v-if="!configCollapsed" class="config-scroll">
+        <el-card class="panel-card config-unified-card" shadow="never">
+          <template #header>
+            <div class="panel-header">
+              <span>数据处理</span>
+              <el-button text class="panel-collapse-btn" title="收起" @click="configCollapsed = true">‹</el-button>
+            </div>
+          </template>
+
+          <!-- ① 数据加载 -->
+          <div class="section-title-row">
+            <span class="section-label">① 数据加载</span>
+          </div>
           <el-form label-width="90px" label-position="left" size="small">
             <el-form-item label="选择文件">
               <el-input v-model="filePath" placeholder="点击右侧按钮选择文件" readonly>
@@ -408,124 +431,137 @@ async function exportFile(format: 'csv' | 'xlsx') {
               </el-button>
             </el-form-item>
           </el-form>
-        </el-card>
 
-        <!-- ② 清洗操作 -->
-        <el-card class="panel-card" style="margin-top:16px;" header="② 数据清洗">
+          <!-- ② 数据清洗 -->
+          <el-divider class="section-divider" />
+          <div class="section-title-row">
+            <span class="section-label">② 数据清洗</span>
+            <el-button text class="toggle-all-btn" @click="activeCleanSections = activeCleanSections.length ? [] : ['columnFilter', 'rowFilter', 'fillna', 'dedup', 'trim', 'findReplace', 'typeCast']">
+              {{ activeCleanSections.length ? '全部折叠' : '全部展开' }}
+            </el-button>
+          </div>
           <el-form label-width="90px" label-position="left" size="small" :disabled="!dataStore.hasData">
+            <el-collapse v-model="activeCleanSections" class="clean-collapse">
+              <el-collapse-item title="去除列" name="columnFilter">
+                <el-form-item label="去除列">
+                  <el-select v-model="filterCols" multiple placeholder="留空=不去除" clearable>
+                    <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item class="section-actions">
+                  <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                    @click="applySectionClean('columnFilter')">应用当前项</el-button>
+                  <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+                </el-form-item>
+              </el-collapse-item>
 
-            <el-divider content-position="left">去除列</el-divider>
-            <el-form-item label="去除列">
-              <el-select v-model="filterCols" multiple placeholder="留空=不去除" clearable>
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-            <el-form-item class="section-actions">
-              <el-button class="action-btn" type="primary" :loading="cleanLoading"
-                @click="applySectionClean('columnFilter')">应用当前项</el-button>
-              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
-            </el-form-item>
+              <el-collapse-item title="行数据条件过滤" name="rowFilter">
+                <el-form-item label="目标列">
+                  <el-select v-model="rowFilterCol" placeholder="选择列" clearable>
+                    <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="操作符">
+                  <el-select v-model="rowFilterOp">
+                    <el-option v-for="op in rowFilterOpOptions" :key="op.value" :label="op.label" :value="op.value" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="条件值">
+                  <el-input v-model="rowFilterVal" :disabled="!rowFilterNeedsValue(rowFilterOp)" placeholder="输入过滤值" />
+                </el-form-item>
+                <el-form-item class="section-actions">
+                  <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                    @click="applySectionClean('rowFilter')">应用当前项</el-button>
+                  <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+                </el-form-item>
+              </el-collapse-item>
 
-            <el-divider content-position="left">行数据条件过滤</el-divider>
-            <el-form-item label="目标列">
-              <el-select v-model="rowFilterCol" placeholder="选择列" clearable>
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="操作符">
-              <el-select v-model="rowFilterOp">
-                <el-option v-for="op in rowFilterOpOptions" :key="op.value" :label="op.label" :value="op.value" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="条件值">
-              <el-input v-model="rowFilterVal" :disabled="!rowFilterNeedsValue(rowFilterOp)" placeholder="输入过滤值" />
-            </el-form-item>
-            <el-form-item class="section-actions">
-              <el-button class="action-btn" type="primary" :loading="cleanLoading"
-                @click="applySectionClean('rowFilter')">应用当前项</el-button>
-              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
-            </el-form-item>
+              <el-collapse-item title="填充缺失值" name="fillna">
+                <el-form-item label="目标列">
+                  <el-select v-model="fillnaCol" placeholder="选择列" clearable>
+                    <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="填充值">
+                  <el-input v-model="fillnaVal" placeholder="输入填充值" />
+                </el-form-item>
+                <el-form-item class="section-actions">
+                  <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                    @click="applySectionClean('fillna')">应用当前项</el-button>
+                  <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+                </el-form-item>
+              </el-collapse-item>
 
-            <el-divider content-position="left">填充缺失值</el-divider>
-            <el-form-item label="目标列">
-              <el-select v-model="fillnaCol" placeholder="选择列" clearable>
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="填充值">
-              <el-input v-model="fillnaVal" placeholder="输入填充值" />
-            </el-form-item>
-            <el-form-item class="section-actions">
-              <el-button class="action-btn" type="primary" :loading="cleanLoading"
-                @click="applySectionClean('fillna')">应用当前项</el-button>
-              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
-            </el-form-item>
+              <el-collapse-item title="去重" name="dedup">
+                <el-form-item label="去重列">
+                  <el-select v-model="dedupCols" multiple placeholder="空 = 全列去重" clearable>
+                    <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item class="section-actions">
+                  <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                    @click="applySectionClean('dedup')">应用当前项</el-button>
+                  <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+                </el-form-item>
+              </el-collapse-item>
 
-            <el-divider content-position="left">去重</el-divider>
-            <el-form-item label="去重列">
-              <el-select v-model="dedupCols" multiple placeholder="空 = 全列去重" clearable>
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-            <el-form-item class="section-actions">
-              <el-button class="action-btn" type="primary" :loading="cleanLoading"
-                @click="applySectionClean('dedup')">应用当前项</el-button>
-              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
-            </el-form-item>
+              <el-collapse-item title="去除前后空格" name="trim">
+                <el-form-item label="目标列">
+                  <el-select v-model="trimCols" multiple placeholder="选择字符串列" clearable>
+                    <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item class="section-actions">
+                  <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                    @click="applySectionClean('trim')">应用当前项</el-button>
+                  <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+                </el-form-item>
+              </el-collapse-item>
 
-            <el-divider content-position="left">去除前后空格</el-divider>
-            <el-form-item label="目标列">
-              <el-select v-model="trimCols" multiple placeholder="选择字符串列" clearable>
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-            <el-form-item class="section-actions">
-              <el-button class="action-btn" type="primary" :loading="cleanLoading"
-                @click="applySectionClean('trim')">应用当前项</el-button>
-              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
-            </el-form-item>
+              <el-collapse-item title="查找替换" name="findReplace">
+                <el-form-item label="目标列">
+                  <el-select v-model="frCols" multiple placeholder="选择列" clearable>
+                    <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="查找">
+                  <el-input v-model="findText" placeholder="查找文本" />
+                </el-form-item>
+                <el-form-item label="替换为">
+                  <el-input v-model="replaceText" placeholder="替换文本" />
+                </el-form-item>
+                <el-form-item label="正则表达式">
+                  <el-switch v-model="useRegex" />
+                </el-form-item>
+                <el-form-item class="section-actions">
+                  <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                    @click="applySectionClean('findReplace')">应用当前项</el-button>
+                  <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+                </el-form-item>
+              </el-collapse-item>
 
-            <el-divider content-position="left">查找替换</el-divider>
-            <el-form-item label="目标列">
-              <el-select v-model="frCols" multiple placeholder="选择列" clearable>
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="查找">
-              <el-input v-model="findText" placeholder="查找文本" />
-            </el-form-item>
-            <el-form-item label="替换为">
-              <el-input v-model="replaceText" placeholder="替换文本" />
-            </el-form-item>
-            <el-form-item label="正则表达式">
-              <el-switch v-model="useRegex" />
-            </el-form-item>
-            <el-form-item class="section-actions">
-              <el-button class="action-btn" type="primary" :loading="cleanLoading"
-                @click="applySectionClean('findReplace')">应用当前项</el-button>
-              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
-            </el-form-item>
-
-            <el-divider content-position="left">类型转换</el-divider>
-            <el-form-item label="目标列">
-              <el-select v-model="typeCol" placeholder="选择列" clearable>
-                <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="目标类型">
-              <el-select v-model="typeTarget">
-                <el-option label="整数 (int)" value="int" />
-                <el-option label="浮点 (float)" value="float" />
-                <el-option label="字符串 (str)" value="str" />
-                <el-option label="日期时间 (datetime)" value="datetime" />
-                <el-option label="日期 (date)" value="date" />
-              </el-select>
-            </el-form-item>
-            <el-form-item class="section-actions">
-              <el-button class="action-btn" type="primary" :loading="cleanLoading"
-                @click="applySectionClean('typeCast')">应用当前项</el-button>
-              <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
-            </el-form-item>
+              <el-collapse-item title="类型转换" name="typeCast">
+                <el-form-item label="目标列">
+                  <el-select v-model="typeCol" placeholder="选择列" clearable>
+                    <el-option v-for="c in dataStore.columnNames" :key="c" :label="c" :value="c" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="目标类型">
+                  <el-select v-model="typeTarget">
+                    <el-option label="整数 (int)" value="int" />
+                    <el-option label="浮点 (float)" value="float" />
+                    <el-option label="字符串 (str)" value="str" />
+                    <el-option label="日期时间 (datetime)" value="datetime" />
+                    <el-option label="日期 (date)" value="date" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item class="section-actions">
+                  <el-button class="action-btn" type="primary" :loading="cleanLoading"
+                    @click="applySectionClean('typeCast')">应用当前项</el-button>
+                  <el-button class="action-btn" :loading="cleanLoading" @click="undoCleanStep">撤销一步</el-button>
+                </el-form-item>
+              </el-collapse-item>
+            </el-collapse>
 
             <el-form-item class="clean-actions">
               <el-button class="action-btn clean-btn-main" type="primary" :loading="cleanLoading" @click="applyClean">
@@ -539,10 +575,12 @@ async function exportFile(format: 'csv' | 'xlsx') {
               </el-button>
             </el-form-item>
           </el-form>
-        </el-card>
 
-        <!-- 导出操作卡 -->
-        <el-card class="panel-card" style="margin-top:16px;" header="↓ 导出数据">
+          <!-- ↓ 导出数据 -->
+          <el-divider class="section-divider" />
+          <div class="section-title-row">
+            <span class="section-label">↓ 导出数据</span>
+          </div>
           <el-form label-width="0" size="small" :disabled="!dataStore.hasData">
             <el-form-item class="export-actions">
               <el-button class="action-btn" type="success" :loading="saveLoading" :disabled="!dataStore.hasData"
@@ -557,12 +595,17 @@ async function exportFile(format: 'csv' | 'xlsx') {
             <el-text type="info" size="small">导出当前全量数据（非预览行）</el-text>
           </el-form>
         </el-card>
+        </div>
+
+        <div v-else class="collapsed-handle" title="展开参数" @click="configCollapsed = false">›</div>
       </el-col>
 
       <!-- 右侧：数据预览表格 -->
-      <el-col :span="16">
-        <el-card class="panel-card" :header="`数据预览（${previewRows.length} 行${cleanedPayload ? ' — 已清洗' : ''}）`">
-          <el-empty v-if="previewRows.length === 0" description="暂无数据，请先加载文件" :image-size="80" />
+      <el-col :span="contentSpan" class="content-col">
+        <el-card class="panel-card preview-card" :header="`数据预览（${previewRows.length} 行${cleanedPayload ? ' — 已清洗' : ''}）`" shadow="never">
+          <div v-if="previewRows.length === 0" class="display-empty">
+            <el-empty description="暂无数据，请先加载数据" :image-size="80" />
+          </div>
           <div v-else class="table-wrapper">
             <div class="table-info">
               <el-text type="info" size="small">
@@ -570,7 +613,7 @@ async function exportFile(format: 'csv' | 'xlsx') {
               </el-text>
             </div>
             <el-table :data="previewRows" border stripe size="small" style="width: 100%"
-              :default-sort="{ prop: '', order: null }" height="calc(65vh - 40px)">
+              :default-sort="{ prop: '', order: null }" height="100%">
               <el-table-column v-for="col in tableColumns" :key="col.name" :prop="col.name" :label="col.name"
                 min-width="120" show-overflow-tooltip>
                 <template #header>
@@ -591,10 +634,121 @@ async function exportFile(format: 'csv' | 'xlsx') {
 <style scoped>
 .load-clean-view {
   height: 100%;
+  overflow: hidden;
 }
 
 .panel-card {
   background: var(--el-bg-color-overlay);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-collapse-btn {
+  font-size: 16px;
+  padding: 0;
+  line-height: 1;
+  height: auto;
+}
+
+.toggle-all-btn {
+  font-size: 12px;
+  padding: 0;
+  height: auto;
+}
+
+.config-unified-card {
+  flex-shrink: 0;
+}
+
+.config-unified-card :deep(.el-card__body) {
+  padding: 12px 16px;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.section-divider {
+  margin: 16px 0 14px;
+}
+
+.collapsed-handle {
+  display: flex;
+  justify-content: center;
+  padding-top: 10px;
+  cursor: pointer;
+  color: var(--el-text-color-secondary);
+  font-size: 24px;
+  line-height: 1;
+  height: 100%;
+  user-select: none;
+}
+
+.collapsed-handle:hover {
+  color: var(--el-color-primary);
+}
+
+.content-col {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.config-col {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.config-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding-right: 2px;
+}
+
+.preview-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.display-empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:deep(.el-card__header) {
+  padding: 8px 16px;
 }
 
 .hint {
@@ -610,9 +764,10 @@ async function exportFile(format: 'csv' | 'xlsx') {
 }
 
 .table-wrapper {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  height: calc(65vh);
 }
 
 .table-info {
@@ -621,8 +776,9 @@ async function exportFile(format: 'csv' | 'xlsx') {
 }
 
 .action-btn {
-  height: 32px;
-  font-size: 14px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
   font-weight: 500;
   margin-left: 0 !important;
 }
@@ -650,6 +806,21 @@ async function exportFile(format: 'csv' | 'xlsx') {
 
 .section-actions .action-btn {
   flex: 1 1 120px;
+}
+
+.clean-collapse {
+  margin-bottom: 16px;
+  border-top: 1px solid var(--el-border-color-light);
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.clean-collapse :deep(.el-collapse-item__header) {
+  font-weight: 600;
+  background: transparent;
+}
+
+.clean-collapse :deep(.el-collapse-item__wrap) {
+  background: transparent;
 }
 
 .clean-btn-main {

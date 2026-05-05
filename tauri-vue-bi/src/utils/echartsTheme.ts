@@ -1,3 +1,9 @@
+// src/utils/echartsTheme.ts
+// ECharts 主题配置 (Theme Profiles)
+//
+// 提供主题 profile 数据、选项列表及工具函数，
+// 与 vue-form 中的 echartsTheme.ts 保持一致。
+
 export interface EChartsThemeProfile {
     name: string
     palette: string[]
@@ -104,6 +110,7 @@ const RUNTIME_REGISTERED_THEMES = new Set(['dark', 'vintage', 'macarons', 'shine
 
 export const ECHARTS_THEME_OPTIONS: EChartsThemeOption[] = [
     { label: '默认主题', value: 'default' },
+    { label: 'v5', value: 'v5' },
     { label: 'Dark', value: 'dark' },
     { label: 'Vintage', value: 'vintage' },
     { label: 'Westeros', value: 'westeros' },
@@ -121,7 +128,6 @@ export const ECHARTS_THEME_OPTIONS: EChartsThemeOption[] = [
 
 export function normalizeThemeName(themeName: string | null | undefined): string {
     const normalized = String(themeName ?? 'default').trim().toLowerCase()
-    if (normalized === 'v5') return 'default'
     return PROFILES[normalized] ? normalized : 'default'
 }
 
@@ -151,4 +157,100 @@ export function getEchartsRuntimeThemeName(themeName: string | null | undefined)
     const normalized = normalizeThemeName(themeName)
     if (normalized === 'default') return undefined
     return RUNTIME_REGISTERED_THEMES.has(normalized) ? normalized : undefined
+}
+
+// ─── 工具：将主题 profile 注入到 ECharts option ───────────────────────────────
+// 对 title / legend / xAxis / yAxis / tooltip / textStyle 全量着色
+
+function _applyAxis(axis: any, profile: EChartsThemeProfile): any {
+    if (!axis) return axis
+    if (Array.isArray(axis)) return axis.map(a => _applyAxis(a, profile))
+    return {
+        ...axis,
+        axisLine: {
+            ...(axis.axisLine ?? {}),
+            lineStyle: {
+                color: axis.axisLine?.lineStyle?.color ?? profile.axisLineColor,
+                ...(axis.axisLine?.lineStyle ?? {}),
+            },
+        },
+        axisLabel: {
+            color: axis.axisLabel?.color ?? profile.axisLabelColor,
+            ...(axis.axisLabel ?? {}),
+        },
+        splitLine: {
+            ...(axis.splitLine ?? {}),
+            lineStyle: {
+                color: axis.splitLine?.lineStyle?.color ?? profile.splitLineColor,
+                ...(axis.splitLine?.lineStyle ?? {}),
+            },
+        },
+    }
+}
+
+function _applyLegend(legend: any, profile: EChartsThemeProfile): any {
+    if (!legend) return legend
+    if (Array.isArray(legend)) return legend.map(l => _applyLegend(l, profile))
+    return {
+        ...legend,
+        textStyle: {
+            color: legend.textStyle?.color ?? profile.textColor,
+            ...(legend.textStyle ?? {}),
+        },
+    }
+}
+
+function _applyTitle(title: any, profile: EChartsThemeProfile): any {
+    if (!title) return title
+    if (Array.isArray(title)) return title.map(t => _applyTitle(t, profile))
+    return {
+        ...title,
+        textStyle: {
+            color: title.textStyle?.color ?? profile.titleColor,
+            ...(title.textStyle ?? {}),
+        },
+        subtextStyle: {
+            color: title.subtextStyle?.color ?? profile.subtitleColor,
+            ...(title.subtextStyle ?? {}),
+        },
+    }
+}
+
+/**
+ * 将主题 profile 完整注入到 ECharts option 对象。
+ * option 自身已显式设置的字段优先，不会被覆盖。
+ */
+export function applyThemeProfile(option: Record<string, any>, themeName: string | null | undefined): Record<string, any> {
+    const profile = getThemeProfile(themeName)
+    const darkSurface = profile.isDark ? 'rgba(17,24,39,0.94)' : 'rgba(255,255,255,0.96)'
+
+    // 判断 option 是否有实际颜色设置（透明/未设置均视为无效，使用主题色）
+    const hasExplicitBg = option.backgroundColor &&
+        option.backgroundColor !== 'transparent' &&
+        option.backgroundColor !== 'rgba(0,0,0,0)'
+
+    return {
+        ...option,
+        color: option.color ?? profile.palette,
+        backgroundColor: hasExplicitBg ? option.backgroundColor : profile.backgroundColor,
+        textStyle: {
+            color: option.textStyle?.color ?? profile.textColor,
+            ...(option.textStyle ?? {}),
+        },
+        title: _applyTitle(option.title, profile),
+        legend: _applyLegend(option.legend, profile),
+        xAxis: _applyAxis(option.xAxis, profile),
+        yAxis: _applyAxis(option.yAxis, profile),
+        tooltip: option.tooltip
+            ? {
+                  ...option.tooltip,
+                  backgroundColor: option.tooltip.backgroundColor ?? darkSurface,
+                  borderColor: option.tooltip.borderColor ?? profile.splitLineColor,
+                  textStyle: {
+                      color: option.tooltip.textStyle?.color ?? profile.textColor,
+                      ...(option.tooltip.textStyle ?? {}),
+                  },
+              }
+            : option.tooltip,
+    }
 }
