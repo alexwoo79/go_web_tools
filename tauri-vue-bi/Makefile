@@ -7,7 +7,7 @@ GREEN := \033[32m
 CYAN  := \033[36m
 YELLOW:= \033[33m
 
-.PHONY: help install dev build bundle test test-rust test-ts lint fmt clean \
+.PHONY: help install dev build bundle dmg test test-rust test-ts lint fmt clean \
         check-deps icon update-deps
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -21,6 +21,7 @@ help:
 	@printf "\n$(CYAN)构建 & 打包$(RESET)\n"
 	@printf "  make build        构建前端（vite build + vue-tsc 类型检查）\n"
 	@printf "  make bundle       完整打包桌面应用（生成 .dmg/.app/.deb/.exe 等）\n"
+	@printf "  make dmg          仅构建 macOS DMG 安装包\n"
 	@printf "\n$(CYAN)测试$(RESET)\n"
 	@printf "  make test         运行全部测试（Rust + TypeScript）\n"
 	@printf "  make test-rust    仅运行 Rust 单元测试\n"
@@ -76,6 +77,12 @@ build:
 bundle:
 	@printf "$(BOLD)打包桌面应用（release 模式）...$(RESET)\n"
 	npm run tauri -- build
+
+# 仅构建 macOS DMG 安装包
+dmg:
+	@printf "$(BOLD)构建 macOS DMG 安装包（release 模式）...$(RESET)\n"
+	@uname | grep -q "Darwin" || (printf "$(YELLOW)!$(RESET) 当前非 macOS，无法构建 DMG\n" && exit 1)
+	npm run tauri -- build --bundles dmg
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 测试
