@@ -73,7 +73,41 @@ const ganttOptions = ref<GanttOptions>({
   darkTheme: false,
   granularity: 'month',
 })
-const isGanttMode = ref(false)
+const chartMode = ref<'general' | 'gantt'>('general')
+const isGanttMode = computed(() => chartMode.value === 'gantt')
+
+// preview/edit state (form data)
+const previewDatasetId = ref<string | null>(null)
+const previewHeaders = ref<string[]>([])
+const previewRows = ref<string[][]>([])
+// editing is disabled for Form preview — keep preview read-only
+
+// pagination for non-edit preview (align with Workbench defaults)
+const previewPage = ref(1)
+const previewPageSize = ref(5)
+const previewPageSizes = [5, 10, 20, 50, -1]
+
+const totalPreviewPages = computed(() => {
+  const total = previewRows.value.length
+  if (previewPageSize.value < 0) return 1
+  return Math.max(1, Math.ceil(total / previewPageSize.value))
+})
+
+const pagedPreviewRows = computed(() => {
+  if (previewPageSize.value < 0) return previewRows.value
+  const start = (previewPage.value - 1) * previewPageSize.value
+  return previewRows.value.slice(start, start + previewPageSize.value)
+})
+
+// collapsed state for preview panel (keeps parity with Workbench)
+const previewCollapsed = ref(false)
+
+// no ag-grid state/functions — preview is read-only on Form page
+
+watch(chartMode, () => {
+  chartOption.value = null
+  ganttData.value = null
+})
 
 const building = ref(false)
 const buildError = ref('')
@@ -165,6 +199,23 @@ function toLegacyConfig(v2: Record<string, any>): Record<string, string> {
   return out
 }
 
+async function loadFormPreview() {
+  loading.value = true
+  error.value = ''
+  try {
+    const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/preview?full=1`, { credentials: 'include' })
+    if (!res.ok) throw new Error((await res.text()) || `加载预览失败 (${res.status})`)
+    const payload = await res.json()
+    previewDatasetId.value = payload.id
+    previewHeaders.value = Array.isArray(payload.headers) ? payload.headers : []
+    previewRows.value = Array.isArray(payload.preview) ? payload.preview : []
+  } catch (e: any) {
+    error.value = e?.message ?? '加载预览失败'
+  } finally {
+    loading.value = false
+  }
+}
+
 async function fetchSchema() {
   loading.value = true
   error.value = ''
@@ -195,6 +246,11 @@ async function fetchSchema() {
   } finally {
     loading.value = false
   }
+    // Auto-load preview for this form to match the data analysis page behavior.
+    // Ignore errors — preview is optional.
+    try {
+      await loadFormPreview()
+    } catch {}
 }
 
 async function buildFromForm() {
@@ -235,18 +291,35 @@ async function buildFromForm() {
         }
       })
 
-      const body = {
-        chartKind: chartKind.value,
-        config: toLegacyConfig(mergedV2Config),
-        fields: Array.from(selectedFields)
+      // If we have a preview dataset loaded (and possibly edited), build from that dataset
+      let res: Response
+      if (previewDatasetId.value) {
+        const body = {
+          datasetId: previewDatasetId.value,
+          chartKind: chartKind.value,
+          schemaVersion: 2,
+          configV2: mergedV2Config,
+          config: toLegacyConfig(mergedV2Config),
+        }
+        res = await fetch('/api/admin/analytics/build', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+      } else {
+        const body = {
+          chartKind: chartKind.value,
+          config: toLegacyConfig(mergedV2Config),
+          fields: Array.from(selectedFields)
+        }
+        res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/build`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
       }
-
-      const res = await fetch(`/api/admin/analytics/forms/${encodeURIComponent(formName.value)}/build`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      })
       if (!res.ok) {
         let msg = `构建失败 (${res.status})`
         try {
@@ -276,10 +349,7 @@ async function buildFromForm() {
   }
 }
 
-function exportPNG() {
-  if (isGanttMode.value) ganttRef.value?.exportPNG()
-  else chartRef.value?.exportPNG()
-}
+// exportPNG removed — export handled by chart toolbar
 
 watch(() => route.params.formName, fetchSchema)
 onMounted(fetchSchema)
@@ -305,12 +375,18 @@ onMounted(fetchSchema)
       <section class="fa-left">
         <div class="panel">
           <h3>图表配置</h3>
-          <label class="gantt-toggle">
-            <input type="checkbox" v-model="isGanttMode" @change="() => { chartOption = null; ganttData = null }" />
-            &nbsp;甘特图模式
-          </label>
+          <div class="gantt-toggle">
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="general" />
+              &nbsp;通用图形
+            </label>
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="gantt" />
+              &nbsp;甘特图
+            </label>
+          </div>
           <ChartOptionsPanel
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :definitions="definitions"
             v-model="chartKind"
             v-model:title="chartTitle"
@@ -321,8 +397,9 @@ onMounted(fetchSchema)
 
         <div class="panel">
           <h3>字段映射</h3>
+          
           <FieldMapper
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :headers="headers"
             :chart-kind="chartKind"
             :definitions="definitions"
@@ -357,21 +434,68 @@ onMounted(fetchSchema)
           </div>
         </div>
 
+        
+
         <div class="panel">
           <p v-if="buildError" class="error-text">{{ buildError }}</p>
           <div class="actions">
             <button class="btn-build" :disabled="building || !canBuild" @click="buildFromForm">
               {{ building ? '生成中…' : '生成图表' }}
             </button>
-            <button v-if="chartOption || ganttData" class="btn-export" @click="exportPNG">导出 PNG</button>
+            <!-- Export handled by chart toolbar; button removed -->
           </div>
         </div>
       </section>
 
       <section class="fa-right">
+        <!-- Preview: use same UI as Workbench (non-editable table, same pager) -->
+        <div v-if="previewHeaders.length" class="preview-panel">
+          <div class="preview-head">
+            <div>
+              <div class="preview-title">数据预览</div>
+              <div class="preview-sub">展示前 {{ pagedPreviewRows.length }} 行，共 {{ previewRows.length }} 行</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="btn-fold" @click="previewCollapsed = !previewCollapsed">{{ previewCollapsed ? '展开' : '收起' }}</button>
+            </div>
+          </div>
+          <div v-if="!previewCollapsed" class="preview-table-wrap">
+            <div class="simple-table-wrap">
+              <div class="preview-scroll">
+                <table class="preview-table">
+                  <thead>
+                    <tr>
+                      <th v-for="h in previewHeaders" :key="h">{{ h }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, i) in pagedPreviewRows" :key="i">
+                      <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="preview-pager">
+                <div>
+                  <label>每页：</label>
+                  <select v-model="previewPageSize">
+                    <option v-for="s in previewPageSizes" :key="s" :value="s">{{ s>0 ? s : '全部' }}</option>
+                  </select>
+                </div>
+                <div>
+                  <button :disabled="previewPage<=1" @click="previewPage--">上一页</button>
+                  <span>{{ previewPage }} / {{ totalPreviewPages }}</span>
+                  <button :disabled="previewPage>=totalPreviewPages" @click="previewPage++">下一页</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div v-if="!chartOption && !ganttData && !building" class="placeholder">选择映射后点击「生成图表」</div>
+
         <ChartToolbar
-          v-else
+          v-if="chartOption || ganttData || building"
           :chart-ref="isGanttMode ? (ganttRef as any) : (chartRef as any)"
           v-model:theme="toolbarTheme"
         >
@@ -384,7 +508,7 @@ onMounted(fetchSchema)
             :options="ganttOptions"
           />
           <ChartCanvas
-            v-else-if="!isGanttMode"
+            v-else-if="chartMode === 'general'"
             ref="chartRef"
             :option="chartOption"
             :loading="building"
@@ -437,9 +561,10 @@ onMounted(fetchSchema)
   background: var(--bg-elevated);
   color: var(--text-700);
   border-radius: 8px;
-  padding: 8px 14px;
-  cursor: pointer;
 }
+
+.btn-export { /* removed: export handled by chart toolbar */ }
+.btn-export:hover { /* removed */ }
 
 .state {
   text-align: center;
@@ -479,6 +604,20 @@ onMounted(fetchSchema)
   font-size: 15px;
   color: var(--text-700);
 }
+
+.preview-scroll {
+  max-height: 36vh;
+  overflow-y: auto;
+}
+.preview-pager {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  gap: 8px;
+}
+.preview-pager .pager-left select { margin-left: 6px }
+.preview-pager .pager-right button { margin: 0 6px }
 
 .actions {
   display: flex;
@@ -577,4 +716,32 @@ onMounted(fetchSchema)
     grid-template-columns: 1fr;
   }
 }
+
+/* Preview styles copied from AnalyticsWorkbenchView to align layout */
+.preview-panel {
+  border: 1px solid var(--surface-card-border);
+  border-radius: 8px;
+  background: transparent; /* removed panel background */
+  flex-shrink: 0;
+  min-width: 0;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--surface-card-border);
+  background: transparent; /* removed header background */
+}
+.preview-title { font-size: 14px; font-weight: 600; color: var(--text-700); }
+.preview-sub { font-size: 12px; color: var(--text-muted); }
+.preview-table-wrap { width: 100%; min-width: 0; overflow-x: auto; max-height: 220px; overflow-y: auto; padding: 12px; }
+.preview-table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+.preview-table th { border: 1px solid var(--surface-card-border); padding: 10px 12px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; background: #f5f5f5; color: var(--text-700); font-weight: 600; }
+.preview-table td { border: 1px solid var(--surface-card-border); padding: 8px 12px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.btn-fold { border: 1px solid var(--surface-header-border); border-radius: 6px; background: var(--bg-elevated); color: var(--text-700); padding: 4px 10px; font-size: 12px; cursor: pointer; }
+.btn-fold:hover { background: var(--bg-soft-blue); }
 </style>
+

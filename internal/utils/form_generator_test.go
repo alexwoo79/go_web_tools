@@ -1,8 +1,8 @@
 package utils
 
 import (
-	"testing"
 	"go-web/internal/config"
+	"testing"
 )
 
 func TestGenerateFormHTML(t *testing.T) {

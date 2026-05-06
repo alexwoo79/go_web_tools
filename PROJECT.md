@@ -8,16 +8,12 @@ Repository for Go Web Form System
 go-web/
 ├── README.md
 ├── QUICKSTART.md
-├── LICENSE
 ├── go.mod
 ├── config.yaml
 ├── config.example.yaml
 ├── build.sh
-├── init.sh
 ├── cmd/
-│   ├── server/
-│   │   └── main.go
-│   └── generate/
+│   └── server/
 │       └── main.go
 ├── internal/
 │   ├── config/
@@ -39,7 +35,6 @@ go-web/
 │       ├── index.html
 │       └── form.html
 ├── data/
-├── generated/
 └── bin/
 ```
 

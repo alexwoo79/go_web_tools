@@ -4,6 +4,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -45,6 +46,61 @@ func (ah *AnalyticsHandler) adminUserID(r *http.Request) int {
 	return ah.primary.SessionUserID(cookie.Value)
 }
 
+// parsePageSize reads paging query parameters from the request.
+// Returns page (1-based) and size. If size==0 the caller requested the full result set.
+func parsePageSize(r *http.Request) (int, int) {
+	q := r.URL.Query()
+	if q.Get("full") == "1" || strings.EqualFold(q.Get("full"), "true") {
+		return 1, 0
+	}
+	page := 1
+	size := 5
+	if p := q.Get("page"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+			page = v
+		}
+	}
+	if s := q.Get("size"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v >= 0 {
+			size = v
+		}
+	}
+	// enforce sensible bounds
+	const maxSize = 1000
+	if size > maxSize {
+		size = maxSize
+	}
+	if page < 1 {
+		page = 1
+	}
+	return page, size
+}
+
+// slicePreview returns the requested page of rows and the total page count.
+// If size==0 the full rows slice is returned and pageCount is 1.
+func slicePreview(rows [][]string, page, size int) ([][]string, int) {
+	total := len(rows)
+	if size == 0 {
+		return rows, 1
+	}
+	if total == 0 {
+		return [][]string{}, 0
+	}
+	pageCount := (total + size - 1) / size
+	if page > pageCount {
+		return [][]string{}, pageCount
+	}
+	start := (page - 1) * size
+	if start >= total {
+		return [][]string{}, pageCount
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	return rows[start:end], pageCount
+}
+
 // UploadDatasetHandler handles POST /api/admin/analytics/datasets/upload
 func (ah *AnalyticsHandler) UploadDatasetHandler(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(11 << 20); err != nil {
@@ -72,9 +128,10 @@ func (ah *AnalyticsHandler) UploadDatasetHandler(w http.ResponseWriter, r *http.
 	}
 
 	preview := ds.Rows
-	if len(preview) > 5 {
-		preview = preview[:5]
-	}
+
+	// apply optional paging query params
+	page, size := parsePageSize(r)
+	preview, pageCount := slicePreview(ds.Rows, page, size)
 
 	jsonResp(w, http.StatusOK, map[string]any{
 		"id":        ds.ID,
@@ -83,6 +140,9 @@ func (ah *AnalyticsHandler) UploadDatasetHandler(w http.ResponseWriter, r *http.
 		"headers":   ds.Headers,
 		"preview":   preview,
 		"rowCount":  len(ds.Rows),
+		"page":      page,
+		"pageSize":  size,
+		"pageCount": pageCount,
 		"expiresIn": 3600,
 	})
 }
@@ -101,9 +161,9 @@ func (ah *AnalyticsHandler) GetDatasetHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	preview := ds.Rows
-	if len(preview) > 5 {
-		preview = preview[:5]
-	}
+
+	page, size := parsePageSize(r)
+	preview, pageCount := slicePreview(ds.Rows, page, size)
 
 	jsonResp(w, http.StatusOK, map[string]any{
 		"id":        ds.ID,
@@ -112,6 +172,9 @@ func (ah *AnalyticsHandler) GetDatasetHandler(w http.ResponseWriter, r *http.Req
 		"headers":   ds.Headers,
 		"preview":   preview,
 		"rowCount":  len(ds.Rows),
+		"page":      page,
+		"pageSize":  size,
+		"pageCount": pageCount,
 		"createdAt": ds.CreatedAt,
 		"expiresAt": ds.ExpiresAt,
 	})
@@ -131,6 +194,36 @@ func (ah *AnalyticsHandler) DeleteDatasetHandler(w http.ResponseWriter, r *http.
 	}
 	dataset.Delete(id)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// UpdateDatasetHandler handles PUT /api/admin/analytics/datasets/{id}
+func (ah *AnalyticsHandler) UpdateDatasetHandler(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["id"]
+	var body struct {
+		Rows [][]string `json:"rows"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求体解析失败"})
+		return
+	}
+	ds, ok := dataset.Load(id)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "数据集不存在或已过期"})
+		return
+	}
+	if ds.OwnerID != ah.adminUserID(r) {
+		jsonResp(w, http.StatusForbidden, map[string]string{"error": "无权修改该数据集"})
+		return
+	}
+	if err := dataset.Update(id, ds.OwnerID, body.Rows); err != nil {
+		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		return
+	}
+	preview := body.Rows
+	if len(preview) > 5 {
+		preview = preview[:5]
+	}
+	jsonResp(w, http.StatusOK, map[string]any{"id": id, "preview": preview, "rowCount": len(body.Rows)})
 }
 
 // DefinitionsHandler handles GET /api/admin/analytics/definitions
@@ -188,7 +281,6 @@ func (ah *AnalyticsHandler) BuildHandler(w http.ResponseWriter, r *http.Request)
 		}
 	}
 	if req.Config != nil {
-		// Keep legacy keys compatible during migration.
 		if cfg.Title == "" {
 			cfg.Title = req.Config["title"]
 		}
@@ -373,6 +465,41 @@ func (ah *AnalyticsHandler) GetFormSchemaHandler(w http.ResponseWriter, r *http.
 	})
 }
 
+// GetFormPreviewHandler handles GET /api/admin/analytics/forms/{formName}/preview
+func (ah *AnalyticsHandler) GetFormPreviewHandler(w http.ResponseWriter, r *http.Request) {
+	formName := mux.Vars(r)["formName"]
+	fi, ok := ah.primary.GetFormForAnalytics(formName)
+	if !ok {
+		jsonResp(w, http.StatusNotFound, map[string]string{"error": "表单不存在"})
+		return
+	}
+
+	tableName := fi.Model.TableName
+	if tableName == "" {
+		tableName = "form_" + fi.Name
+	}
+
+	ownerID := ah.adminUserID(r)
+	ds, err := service.FromFormData(ah.primary.DBForAnalytics(), tableName, fi.Name, ownerID, nil)
+	if err != nil {
+		jsonAPIError(w, http.StatusUnprocessableEntity, model.ErrCodeBusinessNotFound, err.Error())
+		return
+	}
+
+	page, size := parsePageSize(r)
+	preview, pageCount := slicePreview(ds.Rows, page, size)
+
+	jsonResp(w, http.StatusOK, map[string]any{
+		"id":        ds.ID,
+		"headers":   ds.Headers,
+		"preview":   preview,
+		"rowCount":  len(ds.Rows),
+		"page":      page,
+		"pageSize":  size,
+		"pageCount": pageCount,
+	})
+}
+
 // BuildFromFormHandler handles POST /api/admin/analytics/forms/{formName}/build
 func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.Request) {
 	formName := mux.Vars(r)["formName"]
@@ -457,6 +584,8 @@ func (ah *AnalyticsHandler) BuildFromFormHandler(w http.ResponseWriter, r *http.
 // ganttBuildRequest is the JSON body for the gantt build endpoints.
 type ganttBuildRequest struct {
 	DatasetID string            `json:"datasetId"`
+	Headers   []string          `json:"headers,omitempty"`
+	Rows      [][]string        `json:"rows,omitempty"`
 	Config    model.GanttConfig `json:"config"`
 }
 
@@ -467,21 +596,32 @@ func (ah *AnalyticsHandler) BuildGanttHandler(w http.ResponseWriter, r *http.Req
 		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "请求解析失败"})
 		return
 	}
-	if strings.TrimSpace(req.DatasetID) == "" {
-		jsonResp(w, http.StatusBadRequest, map[string]string{"error": "缺少 datasetId"})
-		return
-	}
-
-	ds, ok := dataset.Load(req.DatasetID)
-	if !ok {
-		jsonResp(w, http.StatusNotFound, map[string]string{"error": "dataset 不存在"})
-		return
-	}
-
-	result, err := gantt.Build(ds, req.Config)
-	if err != nil {
-		jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
-		return
+	// Allow either an inline set of rows + headers or a stored dataset id.
+	var result *gantt.Result
+	if len(req.Rows) > 0 {
+		ds := model.Dataset{Headers: req.Headers, Rows: req.Rows}
+		var err error
+		result, err = gantt.Build(ds, req.Config)
+		if err != nil {
+			jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+	} else {
+		if strings.TrimSpace(req.DatasetID) == "" {
+			jsonResp(w, http.StatusBadRequest, map[string]string{"error": "缺少 datasetId 或 rows"})
+			return
+		}
+		ds, ok := dataset.Load(req.DatasetID)
+		if !ok {
+			jsonResp(w, http.StatusNotFound, map[string]string{"error": "dataset 不存在"})
+			return
+		}
+		var err error
+		result, err = gantt.Build(ds, req.Config)
+		if err != nil {
+			jsonResp(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
 	}
 
 	jsonResp(w, http.StatusOK, map[string]any{"gantt": result})
@@ -609,11 +749,7 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 		}
 	}
 	if def == nil {
-		return []model.ValidationIssue{{
-			Field:   "chartKind",
-			Code:    model.ErrCodeValidationUnsupportedChart,
-			Message: "不支持的图形类型",
-		}}
+		return []model.ValidationIssue{{Field: "chartKind", Code: model.ErrCodeValidationUnsupportedChart, Message: "不支持的图形类型"}}
 	}
 
 	issues := make([]model.ValidationIssue, 0)
@@ -629,11 +765,7 @@ func validateBuildConfig(chartKind string, cfg model.VizConfig) []model.Validati
 			continue
 		}
 		seen[f.Key] = true
-		issues = append(issues, model.ValidationIssue{
-			Field:   f.Key,
-			Code:    model.ErrCodeValidationRequiredField,
-			Message: f.Label + " 不能为空",
-		})
+		issues = append(issues, model.ValidationIssue{Field: f.Key, Code: model.ErrCodeValidationRequiredField, Message: f.Label + " 不能为空"})
 	}
 	return issues
 }
@@ -738,6 +870,9 @@ func jsonResp(w http.ResponseWriter, status int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-func jsonAPIError(w http.ResponseWriter, status int, code, message string) {
-	jsonResp(w, status, model.APIErrorResponse{Code: code, Error: message})
+// jsonAPIError writes a structured API error response using model.APIErrorResponse.
+func jsonAPIError(w http.ResponseWriter, status int, code string, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(model.APIErrorResponse{Code: code, Error: msg})
 }

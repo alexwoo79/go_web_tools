@@ -4,7 +4,6 @@ data/
 data.db
 
 # Generated files
-generated/
 bin/
 
 # IDE files

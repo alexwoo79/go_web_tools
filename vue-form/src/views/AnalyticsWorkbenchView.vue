@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { AgGridVue } from 'ag-grid-vue3'
+import 'ag-grid-community/styles/ag-grid.css'
+import 'ag-grid-community/styles/ag-theme-alpine.css'
 import { useRouter } from 'vue-router'
 import DatasetUpload from '@/components/analytics/DatasetUpload.vue'
 import ChartOptionsPanel from '@/components/analytics/ChartOptionsPanel.vue'
@@ -76,9 +79,13 @@ const ganttData = ref<{ tasks: GanttTask[]; stats: GanttStats } | null>(null)
 const chartRef = ref<InstanceType<typeof ChartCanvas>>()
 const ganttRef = ref<InstanceType<typeof GanttChart>>()
 
-const isGanttMode = ref(false)
+// chartMode: 'general' = 通用图形, 'gantt' = 甘特图
+const chartMode = ref<'general' | 'gantt'>('general')
+const isGanttMode = computed(() => chartMode.value === 'gantt')
 const activeTab = ref<'step1' | 'step2' | 'step3'>('step1')
 const previewCollapsed = ref(false)
+const isEditingPreview = ref(false)
+const editPreviewRows = ref<any[][]>([])
 const demoLoading = ref(false)
 const demoError = ref('')
 const autoLoadDemo = ref(false)
@@ -99,20 +106,14 @@ const demoHintText = computed(() => {
 })
 
 // When isGanttMode changes, set chartKind appropriately
-function toggleGanttMode(val: boolean) {
-  isGanttMode.value = val
-  if (val) {
+watch(chartMode, (mode) => {
+  if (mode === 'gantt') {
     chartKind.value = 'gantt'
   } else {
     chartKind.value = definitions.value[0]?.kind ?? ''
   }
   chartOption.value = null
   ganttData.value = null
-}
-
-const isGanttModeModel = computed({
-  get: () => isGanttMode.value,
-  set: (v) => toggleGanttMode(v)
 })
 
 const step = computed(() => {
@@ -174,7 +175,122 @@ function sanitizeYSeriesConfig(kind: string, config: Record<string, any>): Recor
 }
 
 const previewHeaders = computed(() => dataset.value?.headers ?? [])
-const previewRows = computed(() => dataset.value?.preview ?? [])
+const previewRows = computed(() => {
+  if (isEditingPreview.value) return editPreviewRows.value
+  return dataset.value?.preview ?? []
+})
+
+// pagination for preview (non-edit mode)
+const previewPage = ref(1)
+// default to show all rows
+const previewPageSize = ref(-1)
+const previewPageSizes = [5, 10, 20, 50, -1]
+const totalPreviewPages = computed(() => {
+  const total = previewRows.value.length
+  if (previewPageSize.value < 0) return 1
+  return Math.max(1, Math.ceil(total / previewPageSize.value))
+})
+const pagedPreviewRows = computed(() => {
+  if (previewPageSize.value < 0) return previewRows.value
+  const start = (previewPage.value - 1) * previewPageSize.value
+  return previewRows.value.slice(start, start + previewPageSize.value)
+})
+
+// ag-grid state
+const gridApi = ref<any>(null)
+const gridColumnDefs = ref<any[]>([])
+const gridRowData = ref<any[]>([])
+
+function buildGridDefs(headers: string[]) {
+  return headers.map(h => ({ field: h, editable: true, resizable: true }))
+}
+
+function refreshGrid() {
+  gridColumnDefs.value = buildGridDefs(previewHeaders.value)
+  gridRowData.value = previewRows.value.map(r => {
+    const obj: Record<string, any> = {}
+    previewHeaders.value.forEach((h, i) => { obj[h] = r[i] ?? '' })
+    return obj
+  })
+}
+
+// keep pagination consistent when data/page size changes
+watch(previewPageSize, () => { previewPage.value = 1 })
+watch(previewRows, () => {
+  if (previewPage.value > totalPreviewPages.value) previewPage.value = totalPreviewPages.value
+})
+
+watch([previewHeaders, previewRows], refreshGrid, { immediate: true })
+function onEditPreview() {
+  if (!dataset.value?.preview) return
+  // 深拷贝，避免直接修改原数据
+  editPreviewRows.value = dataset.value.preview.map(row => [...row])
+  isEditingPreview.value = true
+  // initialize ag-grid
+  refreshGrid()
+}
+
+function onGridReady(params: any) {
+  gridApi.value = params.api
+}
+
+function onCellValueChanged(e: any) {
+  // Reflect changes back into editPreviewRows based on header order
+  const rowIndex = e.rowIndex
+  const colId = e.colDef?.field
+  const colIndex = previewHeaders.value.indexOf(colId)
+  if (colIndex >= 0) {
+    if (!editPreviewRows.value[rowIndex]) editPreviewRows.value[rowIndex] = []
+    editPreviewRows.value[rowIndex][colIndex] = e.newValue
+  }
+}
+
+function onCancelEditPreview() {
+  isEditingPreview.value = false
+  editPreviewRows.value = []
+}
+
+async function onSaveEditPreview() {
+  if (dataset.value && editPreviewRows.value.length) {
+    // If this dataset is persisted on the server, update it there so builds use the edits.
+    if (dataset.value.id) {
+      try {
+        const res = await fetch(`/api/admin/analytics/datasets/${encodeURIComponent(dataset.value.id)}`, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: editPreviewRows.value })
+        })
+        if (!res.ok) {
+          const msg = await res.text()
+          throw new Error(msg || `更新数据失败 (${res.status})`)
+        }
+        const payload = await res.json()
+        dataset.value.preview = editPreviewRows.value.map(row => [...row])
+        if (typeof payload.rowCount === 'number') dataset.value.rowCount = payload.rowCount
+      } catch (e: any) {
+        // Surface error to user briefly
+        // eslint-disable-next-line no-console
+        console.error('保存数据预览失败', e)
+        alert(e?.message || '保存数据失败')
+      }
+    } else {
+      // local-only dataset, just update preview
+      dataset.value.preview = editPreviewRows.value.map(row => [...row])
+    }
+  }
+  isEditingPreview.value = false
+  editPreviewRows.value = []
+}
+
+function getEditCell(i: number, j: number) {
+  return (editPreviewRows.value[i] && editPreviewRows.value[i][j]) ?? ''
+}
+
+function setEditCell(i: number, j: number, v: any) {
+  if (!editPreviewRows.value[i]) editPreviewRows.value[i] = []
+  editPreviewRows.value[i][j] = v
+}
 const chartTheme = computed(() => String(optionConfig.value.theme || chartOption.value?.theme || 'default'))
 const toolbarTheme = computed({
   get: () => chartTheme.value,
@@ -362,14 +478,28 @@ function onUploaded(payload: UploadedDataset) {
   buildFieldErrors.value = {}
   chartOption.value = null
   ganttData.value = null
+
+  // If user wants to see all preview rows by default, request full dataset from server
+  if (payload.id && previewPageSize.value < 0) {
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/analytics/datasets/${encodeURIComponent(payload.id)}?full=1`, { credentials: 'include' })
+        if (!res.ok) return
+        const full = await res.json()
+        dataset.value = full
+      } catch (e) {
+        // ignore
+      }
+    })()
+  }
 }
 
-watch([dataset, chartKind, isGanttMode], () => {
+watch([dataset, chartKind, chartMode], () => {
   applyAutoMappingForCurrentChart()
 })
 
 watch(chartKind, async (kind) => {
-  if (!kind || isGanttMode.value || !autoLoadDemo.value) return
+  if (!kind || chartMode.value === 'gantt' || !autoLoadDemo.value) return
   const preset = getAnalyticsDemoPreset(kind)
   if (demoDatasetLoaded.value && dataset.value && preset.key === activeDemoPresetKey.value) {
     applyAutoMappingForCurrentChart()
@@ -410,8 +540,19 @@ async function build() {
   chartOption.value = null
   ganttData.value = null
   try {
-    if (isGanttMode.value) {
-      const body = { datasetId: dataset.value.id, config: ganttConfig.value }
+    if (chartMode.value === 'gantt') {
+      // If user is viewing a paged preview, build from the currently visible rows instead
+      // of the full stored dataset so pagination/edits are reflected immediately.
+      const body: any = { config: ganttConfig.value }
+      // Prefer building from the full stored dataset when available. Only send
+      // inline rows when the dataset is local (no id) or the user is actively
+      // editing the preview (so their edits are used immediately).
+      if (dataset.value && (isEditingPreview.value || !dataset.value.id)) {
+        body.headers = previewHeaders.value
+        body.rows = pagedPreviewRows.value
+      } else {
+        body.datasetId = dataset.value?.id
+      }
       const res = await fetch('/api/admin/analytics/gantt/build', {
         method: 'POST',
         credentials: 'include',
@@ -470,10 +611,7 @@ async function build() {
   }
 }
 
-function exportPNG() {
-  if (isGanttMode.value) ganttRef.value?.exportPNG()
-  else chartRef.value?.exportPNG()
-}
+// exportPNG removed — export handled by chart toolbar
 
 function reset() {
   dataset.value = null
@@ -543,13 +681,17 @@ function reset() {
 
         <div v-else-if="activeTab === 'step2'" class="wb-section" :class="{ disabled: step < 2, done: step > 2 }">
           <div class="gantt-toggle">
-            <label>
-              <input type="checkbox" v-model="isGanttModeModel" />
-              &nbsp;甘特图模式
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="general" />
+              &nbsp;通用图形
+            </label>
+            <label class="radio-inline">
+              <input type="radio" v-model="chartMode" value="gantt" />
+              &nbsp;甘特图
             </label>
           </div>
           <ChartOptionsPanel
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :definitions="definitions"
             v-model="chartKind"
             v-model:title="chartTitle"
@@ -562,7 +704,7 @@ function reset() {
         <div v-else-if="activeTab === 'step3'" class="wb-section" :class="{ disabled: step < 3, done: step > 2 }">
           <!-- Regular chart field mapper -->
           <FieldMapper
-            v-if="!isGanttMode"
+            v-if="chartMode === 'general'"
             :headers="dataset?.headers ?? []"
             :chart-kind="chartKind"
             :definitions="definitions"
@@ -612,7 +754,7 @@ function reset() {
               {{ building ? '构建中…' : '生成图表' }}
             </button>
             <button v-if="dataset" class="btn-reset" @click="reset">重置</button>
-            <button v-if="chartOption || ganttData" class="btn-export" @click="exportPNG">导出 PNG</button>
+            <!-- Export handled by chart toolbar; button removed -->
           </div>
         </div>
       </section>
@@ -622,25 +764,57 @@ function reset() {
           <div class="preview-head">
             <div>
               <div class="preview-title">数据预览</div>
-              <div class="preview-sub">展示前 {{ previewRows.length }} 行，共 {{ dataset.rowCount }} 行</div>
+              <div class="preview-sub">展示前 {{ pagedPreviewRows.length }} 行，共 {{ dataset.rowCount }} 行</div>
             </div>
-            <button class="btn-fold" @click="previewCollapsed = !previewCollapsed">
-              {{ previewCollapsed ? '展开' : '收起' }}
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button v-if="!isEditingPreview" class="btn-edit" @click="onEditPreview">编辑</button>
+              <button v-if="isEditingPreview" class="btn-save" @click="onSaveEditPreview">保存</button>
+              <button v-if="isEditingPreview" class="btn-cancel" @click="onCancelEditPreview">取消</button>
+              <button class="btn-fold" @click="previewCollapsed = !previewCollapsed">
+                {{ previewCollapsed ? '展开' : '收起' }}
+              </button>
+            </div>
           </div>
           <div v-if="!previewCollapsed" class="preview-table-wrap">
-            <table class="preview-table">
-              <thead>
-                <tr>
-                  <th v-for="h in previewHeaders" :key="h">{{ h }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(row, i) in previewRows" :key="i">
-                  <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <div v-if="!isEditingPreview" class="simple-table-wrap">
+              <div class="preview-scroll">
+                <table class="preview-table">
+                  <thead>
+                    <tr>
+                      <th v-for="h in previewHeaders" :key="h">{{ h }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, i) in pagedPreviewRows" :key="i">
+                      <td v-for="(cell, j) in row" :key="j">{{ cell }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="preview-pager">
+                <div>
+                  <label>每页：</label>
+                  <select v-model="previewPageSize">
+                    <option v-for="s in previewPageSizes" :key="s" :value="s">{{ s>0 ? s : '全部' }}</option>
+                  </select>
+                </div>
+                <div>
+                  <button :disabled="previewPage<=1" @click="previewPage--">上一页</button>
+                  <span>{{ previewPage }} / {{ totalPreviewPages }}</span>
+                  <button :disabled="previewPage>=totalPreviewPages" @click="previewPage++">下一页</button>
+                </div>
+              </div>
+              </div>
+            <div v-else class="ag-theme-alpine" style="width:100%; height:300px;">
+              <AgGridVue
+                class="ag-grid"
+                style="width: 100%; height: 100%;"
+                :columnDefs="gridColumnDefs"
+                :rowData="gridRowData"
+                @grid-ready="onGridReady"
+                @cell-value-changed="onCellValueChanged"
+              />
+            </div>
           </div>
         </div>
         <div class="chart-stage">
@@ -744,8 +918,8 @@ function reset() {
 .btn-build:disabled { background: #b0c4de; cursor: default; }
 .btn-reset { padding: 9px 16px; border: 1px solid var(--surface-card-border); border-radius: 6px; background: var(--bg-elevated); color: var(--text-700); cursor: pointer; font-size: 14px; }
 .btn-reset:hover { background: var(--bg-soft-blue); }
-.btn-export { padding: 9px 16px; border: 1px solid #52c41a; border-radius: 6px; background: #f6ffed; color: #389e0d; cursor: pointer; font-size: 14px; }
-.btn-export:hover { background: #d9f7be; }
+.btn-export { /* removed: export handled by chart toolbar */ }
+.btn-export:hover { /* removed */ }
 .demo-toggle-row {
   display: flex;
   align-items: center;
@@ -837,10 +1011,11 @@ function reset() {
 .wb-chart-area.normal-mode {
   min-height: 560px;
 }
+/* Preview panel and table (cleaned up) */
 .preview-panel {
   border: 1px solid var(--surface-card-border);
   border-radius: 8px;
-  background: var(--bg-elevated);
+  background: transparent; /* no panel background */
   flex-shrink: 0;
   min-width: 0;
 }
@@ -850,49 +1025,14 @@ function reset() {
   justify-content: space-between;
   padding: 10px 12px;
   border-bottom: 1px solid var(--surface-card-border);
+  background: transparent; /* no header background */
 }
-.preview-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-700);
-}
-.preview-sub {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.preview-table-wrap {
-  width: 100%;
-  min-width: 0;
-  overflow-x: auto;
-  max-height: 220px;
-  overflow-y: auto;
-}
-.preview-table {
-  border-collapse: collapse;
-  font-size: 12px;
-  min-width: 100%;
-}
-.preview-table th,
-.preview-table td {
-  border: 1px solid var(--surface-card-border);
-  padding: 4px 8px;
-  white-space: nowrap;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.preview-table th {
-  background: var(--bg-soft-blue);
-  font-weight: 600;
-}
-.chart-stage {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-start;
-  position: relative;
-}
+.preview-title { font-size: 14px; font-weight: 600; color: var(--text-700); }
+.preview-sub { font-size: 12px; color: var(--text-muted); }
+.preview-table-wrap { width: 100%; min-width: 0; overflow-x: auto; max-height: 220px; overflow-y: auto; }
+.preview-table { border-collapse: collapse; font-size: 12px; min-width: 100%; }
+.preview-table th { border: 1px solid var(--surface-card-border); padding: 8px 10px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; background: #f5f5f5; color: var(--text-700); font-weight: 600; }
+.preview-table td { border: 1px solid var(--surface-card-border); padding: 6px 8px; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .wb-chart-area.gantt-mode .chart-stage {
   min-height: 560px;
 }

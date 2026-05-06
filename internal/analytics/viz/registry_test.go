@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	_ "go-web/internal/analytics/viz"
 	"go-web/internal/analytics/model"
 	"go-web/internal/analytics/viz"
+	_ "go-web/internal/analytics/viz"
 )
 
 func TestDefinitions_count(t *testing.T) {

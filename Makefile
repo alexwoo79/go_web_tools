@@ -17,6 +17,7 @@ help:
 	@echo "  make docker-build Build Docker image"
 	@echo "  make docker-up    Start Docker service"
 	@echo "  make docker-down  Stop Docker service"
+	@echo "  make release       Create GitHub Release with build artifacts"
 
 deps:
 	cd ./vue-form && npm ci
@@ -56,3 +57,6 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+release:
+	./release.sh
