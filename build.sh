@@ -59,7 +59,8 @@ build_multi() {
 	echo "Cross build complete: $ROOT_DIR/bin/"
 }
 
-if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
+# Install dependencies when missing, or when an existing node_modules is incomplete.
+if [ ! -d "$FRONTEND_DIR/node_modules" ] || ! (cd "$FRONTEND_DIR" && npm ls --depth=0 >/dev/null 2>&1); then
 	echo "[1/3] Installing Vue frontend dependencies..."
 	cd "$FRONTEND_DIR"
 	npm ci

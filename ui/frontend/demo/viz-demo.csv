@@ -1,0 +1,10 @@
+Category,Month,Revenue,Cost,Profit,Share,Source,Target,LinkValue,NodeID,ParentID,NodeValue,ScatterX,ScatterY,ScatterSize
+Cloud,2026-01,120,72,48,28,,,,Cloud,,12,12.5,28.4,18
+Cloud,2026-02,132,79,53,29,,,,Cloud,,13,13.6,29.3,20
+Cloud,2026-03,145,84,61,31,,,,Cloud,,14,14.2,30.8,22
+Security,2026-01,98,58,40,23,Cloud,Security,14,Security,Cloud,9,9.2,21.4,16
+Security,2026-02,103,61,42,22,Cloud,Security,16,Security,Cloud,10,10.1,22.0,17
+Security,2026-03,111,66,45,24,Cloud,Security,18,Security,Cloud,11,10.8,23.7,19
+AI,2026-01,86,51,35,20,Security,AI,11,AI,Security,8,7.9,18.1,14
+AI,2026-02,93,56,37,21,Security,AI,13,AI,Security,9,8.4,19.2,15
+AI,2026-03,101,59,42,22,Security,AI,15,AI,Security,10,9.0,20.1,16
