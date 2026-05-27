@@ -1,0 +1,158 @@
+forms:
+    - category: project
+      description: 收集各项目参与人员、分组及成本完成情况等信息
+      expire_at: "2026-06-30 23:59:59"
+      fields:
+        - label: 项目类型
+          name: project_type
+          options:
+            - 履约项目
+            - 跟踪的项目
+            - 课题研究
+            - 能力建设
+            - 经营工作
+            - 其他
+          required: true
+          type: radio
+        - label: 项目名称
+          name: project_name
+          options:
+            - 彭村项目
+            - 普天项目
+            - 贵阳兰草坝3#地
+            - 太原花语雅颂
+            - 车道沟项目
+            - 雄安站2号地项目四标段绿建专项
+            - 上海新中山街道项目
+            - 苏州42地块项目
+            - 北京通州梨园
+            - 西安DK8商业
+            - 成都54亩
+            - 成都麓湖95亩
+            - 济南机场
+            - 内蒙古国际会议中心
+            - 华中郑州代建项目结构专业户型试算
+            - 贵阳国际城J组团项目封板施工图咨询
+            - 贵阳国际城K组团项目咨询工作梳理及含钢量指标分析
+            - 成都铁建广场节能改造项目设备平台设计
+            - 涿州391地块咨询业务
+            - 中铁通州梨园项目咨询优化价值确认
+            - 上海松江区中山街道项目优化价值确认
+            - 雄安大区施工图设计
+            - 雄安首开区6号楼B1餐厅精装项目
+            - 雄安首开区7号楼2F西侧（培训中心）精装项目
+            - 雄安首开区7号楼2F东侧（接待中心）精装项目
+            - 雄安首开区7号楼7F东侧（华北指）精装项目
+            - 广州中铁建天河梅花铝厂(幼儿园)精装项目
+            - 天津铁建花语尚东（三、四期）精装项目
+            - 张家口万全2期
+            - 太原尖草坪代建
+            - 雄安调规
+            - 郑州代建投标
+            - 密云矿山规划
+            - 南沙区域深圳龙岗吉厦可研项目
+            - 南沙区域-深圳竹园项目
+            - 河北涿州项目-北方代建
+            - 广州增城项目
+            - 深圳龙城60区项目
+            - 物业高频服务场景研究
+            - BIM虫洞重构
+            - 物业缺陷梳理研究
+            - 城市深耕计划
+            - 技术地图建设
+            - 机电一体化
+            - 质量管理
+            - 城市更新业务
+            - 参与公司业务拓展
+            - 追缴回款
+            - 公司其他协同工作
+          required: true
+          type: select
+        - label: 合同额（万元）
+          min: 0
+          name: project_cost
+          placeholder: 请输入项目成本金额（万元）
+          required: false
+          step: 0.01
+          type: number
+        - label: 项目成本率(%)
+          name: project_cost_rate
+          type: select
+          options:
+            - 38%
+            - 80%
+            - 66%
+            - 35%
+            - 44%
+            - 58%
+            - 50%
+            - 100%
+          placeholder: 请输入项目成本率（%）
+          required: false
+        - label: 本季度工作量
+          name: quarter_completion
+          placeholder: 请输入本季度工作量
+          required: false
+          type: number
+        - label: 已完成工作量
+          name: completed_workload
+          placeholder: 请输入已完成工作量
+          required: false
+          type: number
+        - label: 本季度工作完成比例(%)
+          name: completed_ratio 
+          required: false
+          type: number
+          placeholder: 请输入本季度工作完成比例（%）
+        - label: 参与人员
+          name: participant
+          options:
+            - 马海珍
+            - 张华
+            - 崔世民
+            - 王燕皓
+            - 张岩
+            - 郑有池
+            - 张继源
+            - 胡龙
+            - 朱胜龙
+            - 李媛媛
+            - 秦彬
+            - 董俊杰
+            - 钟韵琪
+            - 张文仪
+            - 李辰
+            - 王海龙
+            - 褚永伟
+            - 吴迪
+            - 方琦
+            - 甄琴琴
+            - 朱宇
+            - 王洪生
+            - 万华庭
+            - 李彬
+            - 陈望
+            - 李想
+            - 范明磊
+          required: true
+          type: select
+        - label: 参与比例(%)
+          max: 100
+          min: 0
+          name: participation_ratio
+          required: true
+          type: range
+        - label: 备注
+          name: remarks
+          placeholder: 其他需要说明的事项...
+          required: false
+          type: textarea
+      model:
+        table_name: project_participation
+      name: project_participation
+      pinned: true
+      priority: medium
+      publish_at: "2026-03-25 09:00:00"
+      sort_order: 20
+      status: published
+      title: 项目参与信息收集表单

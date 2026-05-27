@@ -43,6 +43,13 @@ func NewApp(configPath string) (*App, error) {
 			})
 		}
 
+		tableName := ""
+		if fc.Model != nil {
+			tableName = fc.Model.TableName
+		}
+		if tableName == "" {
+			tableName = "form_" + fc.Name
+		}
 		formInfos = append(formInfos, handler.FormInfo{
 			Name:          fc.Name,
 			Title:         fc.Title,
@@ -55,7 +62,7 @@ func NewApp(configPath string) (*App, error) {
 			PublishAt:     fc.PublishAt,
 			ExpireAt:      fc.ExpireAt,
 			DataDirectory: fc.DataDirectory,
-			Model:         struct{ TableName string }{TableName: fc.Model.TableName},
+			Model:         struct{ TableName string }{TableName: tableName},
 			Fields:        fields,
 			FileModTime:   fc.FileModTime,
 			ConfigSource:  fc.ConfigSource,

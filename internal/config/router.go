@@ -1,7 +1,6 @@
 package config
 
 import (
-	analyticshandler "go-web/internal/analytics/handler"
 	"go-web/internal/handler"
 	"go-web/ui"
 	"io/fs"
@@ -84,7 +83,7 @@ func (s *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(s.indexHTML)
 }
 
-func NewRouter(h *handler.Handler, ah *analyticshandler.AnalyticsHandler) *mux.Router {
+func NewRouter(h *handler.Handler) *mux.Router {
 	r := mux.NewRouter()
 	spa := &spaHandler{}
 
@@ -111,8 +110,10 @@ func NewRouter(h *handler.Handler, ah *analyticshandler.AnalyticsHandler) *mux.R
 	r.HandleFunc("/api/data/{formName}", h.RequireAdmin(h.ViewDataHandler)).Methods("GET")
 	r.HandleFunc("/api/admin", h.RequireAdmin(h.AdminHandler)).Methods("GET")
 	r.HandleFunc("/api/admin/share-links", h.RequireAdmin(h.CreateShareLinkHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/form-config", h.RequireAdmin(h.CreateFormConfigHandler)).Methods("POST")
 	r.HandleFunc("/api/admin/form-config/{formName}", h.RequireAdmin(h.GetFormConfigHandler)).Methods("GET")
 	r.HandleFunc("/api/admin/form-config/{formName}", h.RequireAdmin(h.SaveFormConfigHandler)).Methods("PUT")
+	r.HandleFunc("/api/admin/form-config/{formName}", h.RequireAdmin(h.DeleteFormConfigHandler)).Methods("DELETE")
 	r.HandleFunc("/api/admin/users", h.RequireAdmin(h.ListUsersHandler)).Methods("GET")
 	r.HandleFunc("/api/admin/users", h.RequireAdmin(h.CreateUserByAdminHandler)).Methods("POST")
 	r.HandleFunc("/api/admin/users/import", h.RequireAdmin(h.ImportUsersHandler)).Methods("POST")
@@ -121,20 +122,6 @@ func NewRouter(h *handler.Handler, ah *analyticshandler.AnalyticsHandler) *mux.R
 	r.HandleFunc("/api/admin/user-password", h.RequireAdmin(h.AdminUpdateUserPasswordHandler)).Methods("POST")
 	r.HandleFunc("/api/public/forms/{token}", h.PublicFormPageHandler).Methods("GET")
 	r.HandleFunc("/api/public/submit/{token}", h.PublicSubmitHandler).Methods("POST")
-
-	// Analytics 路由 (Phase 1)
-	r.HandleFunc("/api/admin/analytics/datasets/upload", h.RequireLogin(ah.UploadDatasetHandler)).Methods("POST")
-	r.HandleFunc("/api/admin/analytics/datasets/{id}", h.RequireLogin(ah.UpdateDatasetHandler)).Methods("PUT")
-	r.HandleFunc("/api/admin/analytics/datasets/{id}", h.RequireLogin(ah.GetDatasetHandler)).Methods("GET")
-	r.HandleFunc("/api/admin/analytics/datasets/{id}", h.RequireLogin(ah.DeleteDatasetHandler)).Methods("DELETE")
-	r.HandleFunc("/api/admin/analytics/definitions", h.RequireLogin(ah.DefinitionsHandler)).Methods("GET")
-	r.HandleFunc("/api/admin/analytics/build", h.RequireLogin(ah.BuildHandler)).Methods("POST")
-	r.HandleFunc("/api/admin/analytics/validate-hierarchy", h.RequireLogin(ah.ValidateHierarchyHandler)).Methods("POST")
-	r.HandleFunc("/api/admin/analytics/forms/{formName}/schema", h.RequireLogin(ah.GetFormSchemaHandler)).Methods("GET")
-	r.HandleFunc("/api/admin/analytics/forms/{formName}/preview", h.RequireLogin(ah.GetFormPreviewHandler)).Methods("GET")
-	r.HandleFunc("/api/admin/analytics/forms/{formName}/build", h.RequireLogin(ah.BuildFromFormHandler)).Methods("POST")
-	r.HandleFunc("/api/admin/analytics/gantt/build", h.RequireLogin(ah.BuildGanttHandler)).Methods("POST")
-	r.HandleFunc("/api/admin/analytics/forms/{formName}/gantt/build", h.RequireLogin(ah.BuildFormGanttHandler)).Methods("POST")
 
 	// 所有其他路由由 Vue SPA 处理
 	r.PathPrefix("/").Handler(spa)

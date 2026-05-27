@@ -7,8 +7,6 @@ import RegisterView from '../views/RegisterView.vue'
 import MySubmissionsView from '../views/MySubmissionsView.vue'
 import ChangePasswordView from '../views/ChangePasswordView.vue'
 import UserManagementView from '../views/UserManagementView.vue'
-import AnalyticsWorkbenchView from '../views/AnalyticsWorkbenchView.vue'
-import FormAnalyticsView from '../views/FormAnalyticsView.vue'
 import NavigationHubView from '../views/NavigationHubView.vue'
 import { useAuthStore } from '../stores/auth'
 
@@ -54,18 +52,6 @@ const router = createRouter({
       name: 'share-form',
       component: FormView,
       meta: { title: '填写表单' },
-    },
-    {
-      path: '/admin/analytics',
-      name: 'admin-analytics',
-      component: AnalyticsWorkbenchView,
-      meta: { requiresAuth: true, title: '数据分析工作台' },
-    },
-    {
-      path: '/admin/analytics/forms/:formName',
-      name: 'admin-analytics-form',
-      component: FormAnalyticsView,
-      meta: { requiresAuth: true, title: '表单数据分析' },
     },
   ],
 })

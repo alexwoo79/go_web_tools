@@ -70,6 +70,13 @@ const editContent = ref('')
 const editSourceFile = ref('')
 const editFormName = ref('')
 const editSaveResult = ref('')
+const showCreateModal = ref(false)
+const createSaving = ref(false)
+const createError = ref('')
+const createContent = ref('')
+const createSourceFile = ref('')
+const createSaveResult = ref('')
+const deletingFormName = ref('')
 const viewportWidth = ref(9999)
 const router = useRouter()
 const auth = useAuthStore()
@@ -87,6 +94,13 @@ const hasActiveFilters = computed(
     selectedCategory.value !== 'all' ||
     keyword.value.trim() !== '' ||
     !includeExpired.value,
+)
+const editedYamlFormName = computed(() => {
+  const match = editContent.value.match(/-\s*name\s*:\s*["']?([^"'\n#]+)["']?/m)
+  return match?.[1]?.trim() ?? ''
+})
+const editNameChanged = computed(
+  () => editedYamlFormName.value !== '' && editedYamlFormName.value !== editFormName.value,
 )
 
 function updateViewportMode() {
@@ -317,6 +331,10 @@ async function saveFormConfig() {
   editSaveResult.value = ''
 
   try {
+    if (editNameChanged.value) {
+      throw new Error(`表单 name 是唯一标识，当前不支持修改。请保持 name: ${editFormName.value}`)
+    }
+
     const res = await fetch(`/api/admin/form-config/${editFormName.value}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -338,6 +356,86 @@ async function saveFormConfig() {
 function closeEditModal() {
   showEditModal.value = false
 }
+
+function buildDefaultFormName() {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `new_form_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+}
+
+function openCreateModal() {
+  const defaultName = buildDefaultFormName()
+  showCreateModal.value = true
+  createSaving.value = false
+  createError.value = ''
+  createSaveResult.value = ''
+  createSourceFile.value = ''
+  createContent.value = `forms:
+  - name: ${defaultName}
+    title: 新表单标题
+    description: 新表单描述
+    category: general
+    status: published
+    fields:
+      - name: example_field
+        label: 示例字段
+        type: text
+        required: true
+`
+}
+
+async function createFormConfig() {
+  createSaving.value = true
+  createError.value = ''
+  createSaveResult.value = ''
+
+  try {
+    const res = await fetch('/api/admin/form-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: createContent.value }),
+    })
+    const payload = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(payload.error || '创建失败')
+    }
+
+    createSourceFile.value = payload.source || ''
+    createSaveResult.value = payload.message || '新表单已创建并重载'
+    await fetchAdminData()
+  } catch (e: any) {
+    createError.value = e.message || '创建失败'
+  } finally {
+    createSaving.value = false
+  }
+}
+
+function closeCreateModal() {
+  showCreateModal.value = false
+}
+
+async function deleteForm(form: FormStat) {
+  const confirmed = window.confirm(`确认删除表单「${form.Title} (${form.Name})」？\n该操作会从配置中移除该表单。`)
+  if (!confirmed) return
+
+  deletingFormName.value = form.Name
+  error.value = ''
+
+  try {
+    const res = await fetch(`/api/admin/form-config/${form.Name}`, {
+      method: 'DELETE',
+    })
+    const payload = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      throw new Error(payload.error || '删除失败')
+    }
+    await fetchAdminData()
+  } catch (e: any) {
+    error.value = e.message || '删除失败'
+  } finally {
+    deletingFormName.value = ''
+  }
+}
 </script>
 
 <template>
@@ -347,7 +445,6 @@ function closeEditModal() {
       <div class="header-right">
         <span v-if="user" class="user-badge">{{ user.Username }}</span>
         <a href="/admin/users" @click.prevent="router.push('/admin/users')" class="link">用户管理</a>
-        <a href="/admin/analytics" @click.prevent="router.push('/admin/analytics')" class="link">数据分析</a>
         <button class="btn-logout" @click="logout">退出登录</button>
         <a href="/" @click.prevent="router.push('/')" class="link">← 前台首页</a>
       </div>
@@ -358,7 +455,10 @@ function closeEditModal() {
       <div v-else-if="error" class="state-msg error">{{ error }}</div>
 
       <div v-else>
-        <h2 class="section-title">表单数据统计</h2>
+        <div class="section-head">
+          <h2 class="section-title">表单数据统计</h2>
+          <button class="btn-create-form" @click="openCreateModal">新增表单</button>
+        </div>
         <section class="filter-panel">
           <label class="filter-field">
             <span>状态</span>
@@ -454,8 +554,10 @@ function closeEditModal() {
                     <button class="btn-view" @click="router.push(`/forms/${form.Name}`)">填写</button>
                     <button class="btn-share" @click="generateShareLink(form)">专用链接</button>
                     <button class="btn-edit" @click="openEditModal(form)">编辑</button>
+                    <button class="btn-delete" :disabled="deletingFormName === form.Name" @click="deleteForm(form)">
+                      {{ deletingFormName === form.Name ? '删除中…' : '删除' }}
+                    </button>
                     <button class="btn-export" @click="exportCSV(form.Name)">导出 CSV</button>
-                    <button class="btn-analytics" @click="router.push(`/admin/analytics/forms/${form.Name}`)">分析</button>
                   </div>
                 </td>
               </tr>
@@ -483,8 +585,10 @@ function closeEditModal() {
               <button class="btn-view" @click="router.push(`/forms/${form.Name}`)">填写</button>
               <button class="btn-share" @click="generateShareLink(form)">专用链接</button>
               <button class="btn-edit" @click="openEditModal(form)">编辑</button>
+              <button class="btn-delete" :disabled="deletingFormName === form.Name" @click="deleteForm(form)">
+                {{ deletingFormName === form.Name ? '删除中…' : '删除' }}
+              </button>
               <button class="btn-export" @click="exportCSV(form.Name)">导出</button>
-              <button class="btn-analytics" @click="router.push(`/admin/analytics/forms/${form.Name}`)">分析</button>
             </div>
           </article>
         </div>
@@ -527,6 +631,9 @@ function closeEditModal() {
             <div v-if="editLoading" class="state-msg">加载配置中…</div>
             <div v-else-if="editError && !editContent" class="state-msg error">{{ editError }}</div>
             <template v-else>
+              <p class="edit-tip">
+                当前仅支持修改表单内容，<code>name</code> 作为唯一标识不可修改；如需改名，需要同步处理路由和数据表。
+              </p>
               <textarea
                 v-model="editContent"
                 class="yaml-editor"
@@ -542,12 +649,48 @@ function closeEditModal() {
                 </div>
                 <div class="edit-footer-actions">
                   <button class="btn-close" @click="closeEditModal">取消</button>
-                  <button class="btn-save-config" :disabled="editSaving" @click="saveFormConfig">
+                  <button class="btn-save-config" :disabled="editSaving || editNameChanged" @click="saveFormConfig">
                     {{ editSaving ? '保存中…' : '保存并重载' }}
                   </button>
                 </div>
               </div>
             </template>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="showCreateModal" class="modal-mask" @click.self="closeCreateModal">
+        <div class="modal-panel edit-panel">
+          <div class="modal-header">
+            <div class="edit-header-info">
+              <h3>新增表单配置</h3>
+              <span v-if="createSourceFile" class="edit-source-file">{{ createSourceFile }}</span>
+            </div>
+            <button class="btn-close" @click="closeCreateModal">关闭</button>
+          </div>
+
+          <div class="modal-body edit-modal-body">
+            <p class="edit-tip">请粘贴只包含一个 forms 项的 YAML 内容，保存后将自动生成并加载新表单。</p>
+            <textarea
+              v-model="createContent"
+              class="yaml-editor"
+              spellcheck="false"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+            />
+            <div class="edit-footer">
+              <div class="edit-messages">
+                <span v-if="createError" class="edit-error">{{ createError }}</span>
+                <span v-else-if="createSaveResult" class="edit-success">{{ createSaveResult }}</span>
+              </div>
+              <div class="edit-footer-actions">
+                <button class="btn-close" @click="closeCreateModal">取消</button>
+                <button class="btn-save-config" :disabled="createSaving || !createContent.trim()" @click="createFormConfig">
+                  {{ createSaving ? '创建中…' : '创建并重载' }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -631,7 +774,38 @@ function closeEditModal() {
 .state-msg { text-align: center; color: #888; padding: 3rem 0; }
 .state-msg.error { color: #e53e3e; }
 
-.section-title { font-size: 1rem; color: #444; margin-bottom: 1rem; }
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .7rem;
+  margin-bottom: 1rem;
+}
+
+.section-title {
+  font-size: 1rem;
+  color: #444;
+  margin: 0;
+}
+
+.btn-create-form {
+  height: 34px;
+  padding: 0 .88rem;
+  border: none;
+  border-radius: 8px;
+  background: #dff6e8;
+  color: #1b6a42;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease, opacity .2s;
+}
+
+.btn-create-form:hover {
+  opacity: .95;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(17, 24, 39, .08);
+}
 
 .filter-panel {
   display: grid;
@@ -852,7 +1026,7 @@ tr:hover td { background: #f9fbff; }
   gap: .5rem;
 }
 
-.btn-view-data, .btn-view, .btn-share, .btn-edit, .btn-export, .btn-analytics {
+.btn-view-data, .btn-view, .btn-share, .btn-edit, .btn-delete, .btn-export {
   min-width: 82px;
   height: 34px;
   padding: 0 .75rem;
@@ -869,9 +1043,9 @@ tr:hover td { background: #f9fbff; }
 .btn-view { background: var(--bg-soft-blue); color: var(--brand-600); }
 .btn-share { background: #f0ecff; color: #5b43b8; }
 .btn-edit { background: #e8f8ef; color: #1d7a47; }
+.btn-delete { background: #feecec; color: #c53030; }
 .btn-export { background: var(--bg-soft-green); color: var(--status-success); }
-.btn-analytics { background: #e6f4ff; color: #0958d9; }
-.btn-view-data:hover, .btn-view:hover, .btn-share:hover, .btn-edit:hover, .btn-export:hover, .btn-analytics:hover {
+.btn-view-data:hover, .btn-view:hover, .btn-share:hover, .btn-edit:hover, .btn-delete:hover, .btn-export:hover {
   opacity: .95;
   transform: translateY(-1px);
   box-shadow: 0 3px 10px rgba(17, 24, 39, .08);
@@ -881,9 +1055,14 @@ tr:hover td { background: #f9fbff; }
 .btn-view:focus-visible,
 .btn-share:focus-visible,
 .btn-edit:focus-visible,
-.btn-export:focus-visible,
-.btn-analytics:focus-visible {
+.btn-delete:focus-visible,
+.btn-export:focus-visible {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .2);
+}
+
+.btn-delete:disabled {
+  opacity: .65;
+  cursor: not-allowed;
 }
 
 .share-panel {
@@ -1116,6 +1295,7 @@ tr:hover td { background: #f9fbff; }
 .mobile-list-compact .btn-view,
 .mobile-list-compact .btn-share,
 .mobile-list-compact .btn-edit,
+.mobile-list-compact .btn-delete,
 .mobile-list-compact .btn-export {
   min-width: 64px;
   height: 28px;
@@ -1148,6 +1328,10 @@ tr:hover td { background: #f9fbff; }
   .filter-panel {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     padding: .62rem;
+  }
+
+  .section-head {
+    margin-bottom: .72rem;
   }
 
   .filter-field {
@@ -1195,6 +1379,7 @@ tr:hover td { background: #f9fbff; }
   .btn-view,
   .btn-share,
   .btn-edit,
+  .btn-delete,
   .btn-export {
     min-width: 66px;
     height: 30px;
@@ -1250,6 +1435,7 @@ tr:hover td { background: #f9fbff; }
   .btn-view,
   .btn-share,
   .btn-edit,
+  .btn-delete,
   .btn-export {
     min-width: 68px;
     height: 28px;
@@ -1264,6 +1450,15 @@ tr:hover td { background: #f9fbff; }
   .filter-panel {
     grid-template-columns: 1fr;
     gap: .52rem;
+  }
+
+  .section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .btn-create-form {
+    width: 100%;
   }
 
   .filter-field,
@@ -1301,6 +1496,7 @@ tr:hover td { background: #f9fbff; }
   .btn-view,
   .btn-share,
   .btn-edit,
+  .btn-delete,
   .btn-export {
     min-width: 60px;
     font-size: .7rem;
@@ -1352,6 +1548,20 @@ tr:hover td { background: #f9fbff; }
   flex: 1;
   overflow: hidden;
   padding-bottom: 0;
+}
+
+.edit-tip {
+  margin: 0 0 .72rem;
+  color: rgba(30, 41, 59, .78);
+  font-size: .9rem;
+  line-height: 1.55;
+}
+
+.edit-tip code {
+  padding: .08rem .32rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .08);
+  font-size: .92em;
 }
 
 .yaml-editor {

@@ -278,23 +278,13 @@ func (h *Handler) getCurrentUser(r *http.Request) *Session {
 }
 
 // SessionUserID returns the user ID for the given session token, or 0 if invalid.
-// Exported for use by sub-handlers (e.g. analytics).
+// Exported for use by sub-handlers.
 func (h *Handler) SessionUserID(sessionID string) int {
 	s := h.sessionMgr.GetSession(sessionID)
 	if s == nil {
 		return 0
 	}
 	return s.UserID
-}
-
-// GetFormForAnalytics exposes form config to analytics sub-handlers.
-func (h *Handler) GetFormForAnalytics(name string) (FormInfo, bool) {
-	return h.getForm(name)
-}
-
-// DBForAnalytics exposes database access to analytics sub-handlers.
-func (h *Handler) DBForAnalytics() *models.Database {
-	return h.db
 }
 
 // convertToModelsField 将 handler.FieldInfo 转换为 models.FieldInfo
@@ -1966,7 +1956,7 @@ func mergeFormsIntoConfig(originContent []byte, editedContent []byte, formName s
 		return nil, fmt.Errorf("仅允许编辑当前表单对应项")
 	}
 	if getFormNameFromNode(editedForms[0]) != formName {
-		return nil, fmt.Errorf("仅允许编辑表单 %s", formName)
+		return nil, fmt.Errorf("表单 name 不允许修改，请保持为 %s", formName)
 	}
 
 	originFormsRaw, ok := origin["forms"]
@@ -1992,6 +1982,102 @@ func mergeFormsIntoConfig(originContent []byte, editedContent []byte, formName s
 
 	origin["forms"] = originForms
 	return yaml.Marshal(origin)
+}
+
+func appendFormIntoConfig(originContent []byte, newContent []byte) ([]byte, string, error) {
+	var origin map[string]interface{}
+	if err := yaml.Unmarshal(originContent, &origin); err != nil {
+		return nil, "", fmt.Errorf("原配置解析失败: %w", err)
+	}
+
+	var created map[string]interface{}
+	if err := yaml.Unmarshal(newContent, &created); err != nil {
+		return nil, "", fmt.Errorf("新表单配置解析失败: %w", err)
+	}
+
+	for k := range created {
+		if k != "forms" {
+			return nil, "", fmt.Errorf("仅允许提交 forms 配置")
+		}
+	}
+
+	forms, ok := created["forms"]
+	if !ok {
+		return nil, "", fmt.Errorf("缺少 forms 配置")
+	}
+	createdForms, ok := forms.([]interface{})
+	if !ok {
+		return nil, "", fmt.Errorf("forms 配置格式无效")
+	}
+	if len(createdForms) != 1 {
+		return nil, "", fmt.Errorf("新建时仅允许提交一个表单")
+	}
+
+	newFormName := getFormNameFromNode(createdForms[0])
+	if strings.TrimSpace(newFormName) == "" {
+		return nil, "", fmt.Errorf("表单 name 不能为空")
+	}
+
+	originFormsRaw, ok := origin["forms"]
+	if !ok {
+		return nil, "", fmt.Errorf("原配置缺少 forms 配置")
+	}
+	originForms, ok := originFormsRaw.([]interface{})
+	if !ok {
+		return nil, "", fmt.Errorf("原配置 forms 格式无效")
+	}
+
+	for _, form := range originForms {
+		if getFormNameFromNode(form) == newFormName {
+			return nil, "", fmt.Errorf("表单 %s 已存在，请更换 name", newFormName)
+		}
+	}
+
+	origin["forms"] = append(originForms, createdForms[0])
+	mergedContent, err := yaml.Marshal(origin)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return mergedContent, newFormName, nil
+}
+
+func removeFormFromConfig(originContent []byte, formName string) ([]byte, error) {
+	var origin map[string]interface{}
+	if err := yaml.Unmarshal(originContent, &origin); err != nil {
+		return nil, fmt.Errorf("原配置解析失败: %w", err)
+	}
+
+	originFormsRaw, ok := origin["forms"]
+	if !ok {
+		return nil, fmt.Errorf("原配置缺少 forms 配置")
+	}
+	originForms, ok := originFormsRaw.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("原配置 forms 格式无效")
+	}
+
+	nextForms := make([]interface{}, 0, len(originForms))
+	removed := false
+	for _, form := range originForms {
+		if getFormNameFromNode(form) == formName {
+			removed = true
+			continue
+		}
+		nextForms = append(nextForms, form)
+	}
+
+	if !removed {
+		return nil, fmt.Errorf("未找到表单 %s", formName)
+	}
+
+	origin["forms"] = nextForms
+	mergedContent, err := yaml.Marshal(origin)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergedContent, nil
 }
 
 // GetFormConfigHandler 返回表单所在的 YAML 文件原始内容
@@ -2093,5 +2179,129 @@ func (h *Handler) SaveFormConfigHandler(w http.ResponseWriter, r *http.Request) 
 	jsonResponse(w, http.StatusOK, map[string]interface{}{
 		"status":  "success",
 		"message": "配置已保存并重载",
+	})
+}
+
+// CreateFormConfigHandler 创建新表单 YAML 配置并热重载
+func (h *Handler) CreateFormConfigHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "请求格式错误"})
+		return
+	}
+
+	var probe interface{}
+	if err := yaml.Unmarshal([]byte(req.Content), &probe); err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "YAML 格式错误: " + err.Error()})
+		return
+	}
+
+	filePath, err := h.resolveConfigFilePath("")
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	originContent, err := os.ReadFile(filePath)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "读取原配置失败: " + err.Error()})
+		return
+	}
+
+	mergedContent, formName, err := appendFormIntoConfig(originContent, []byte(req.Content))
+	if err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	tmpPath := filePath + ".tmp"
+	if err := os.WriteFile(tmpPath, mergedContent, 0644); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "写入失败: " + err.Error()})
+		return
+	}
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		_ = os.Remove(tmpPath)
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "保存配置文件失败: " + err.Error()})
+		return
+	}
+
+	if err := h.reloadForms(); err != nil {
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"status":   "saved_reload_failed",
+			"formName": formName,
+			"source":   filepath.Base(filePath),
+			"message":  "新表单已保存，但重载失败: " + err.Error(),
+		})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"status":   "success",
+		"formName": formName,
+		"source":   filepath.Base(filePath),
+		"message":  "新表单已创建并重载",
+	})
+}
+
+// DeleteFormConfigHandler 删除表单 YAML 配置并热重载
+func (h *Handler) DeleteFormConfigHandler(w http.ResponseWriter, r *http.Request) {
+	formName := mux.Vars(r)["formName"]
+	if strings.TrimSpace(formName) == "" {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "缺少表单名称"})
+		return
+	}
+
+	fi, ok := h.getForm(formName)
+	if !ok {
+		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "未找到表单"})
+		return
+	}
+
+	filePath, err := h.resolveConfigFilePath(fi.ConfigSource)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	originContent, err := os.ReadFile(filePath)
+	if err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "读取原配置失败: " + err.Error()})
+		return
+	}
+
+	mergedContent, err := removeFormFromConfig(originContent, formName)
+	if err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	tmpPath := filePath + ".tmp"
+	if err := os.WriteFile(tmpPath, mergedContent, 0644); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "写入失败: " + err.Error()})
+		return
+	}
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		_ = os.Remove(tmpPath)
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "保存配置文件失败: " + err.Error()})
+		return
+	}
+
+	if err := h.reloadForms(); err != nil {
+		jsonResponse(w, http.StatusOK, map[string]interface{}{
+			"status":   "saved_reload_failed",
+			"formName": formName,
+			"source":   filepath.Base(filePath),
+			"message":  "表单已删除，但重载失败: " + err.Error(),
+		})
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]interface{}{
+		"status":   "success",
+		"formName": formName,
+		"source":   filepath.Base(filePath),
+		"message":  "表单已删除并重载",
 	})
 }

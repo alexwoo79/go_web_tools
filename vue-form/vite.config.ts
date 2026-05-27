@@ -12,9 +12,6 @@ export default defineConfig({
     vueJsx(),
     vueDevTools(),
   ],
-  optimizeDeps: {
-    include: ['ag-grid-community', 'ag-grid-vue3']
-  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -35,18 +32,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return
-
-          if (id.includes('/node_modules/zrender/')) {
-            return 'zrender-vendor'
-          }
-
-          if (id.includes('/node_modules/echarts/')) {
-            return 'echarts-misc'
-          }
-
-          if (id.includes('/node_modules/ag-grid-community/') || id.includes('/node_modules/ag-grid-vue3/') || id.includes('/node_modules/ag-grid-enterprise/')) {
-            return 'ag-grid-vendor'
-          }
 
           if (id.includes('/node_modules/lodash/')) return 'lodash-vendor'
           if (id.includes('/node_modules/vue/') || id.includes('/node_modules/@vue/')) return 'vue-vendor'

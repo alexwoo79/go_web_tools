@@ -35,12 +35,6 @@ async function logout() {
         <span>进入 →</span>
       </button>
 
-      <button class="entry-card" @click="router.push('/admin/analytics')">
-        <h2>数据分析作图</h2>
-        <p>上传数据、配置图表映射并生成分析图表。</p>
-        <span>进入 →</span>
-      </button>
-
       <button v-if="isAdmin" class="entry-card" @click="router.push('/admin')">
         <h2>表单后台管理</h2>
         <p>管理表单配置、查看数据并维护后台设置。</p>

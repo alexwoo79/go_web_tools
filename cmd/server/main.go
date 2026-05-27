@@ -5,7 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	analyticshandler "go-web/internal/analytics/handler"
 	"go-web/internal/config"
 	"go-web/internal/handler"
 	"go-web/internal/models"
@@ -120,7 +119,10 @@ func main() {
 			})
 		}
 
-		tableName := fc.Model.TableName
+		tableName := ""
+		if fc.Model != nil {
+			tableName = fc.Model.TableName
+		}
 		if tableName == "" {
 			tableName = "form_" + fc.Name
 		}
@@ -197,7 +199,10 @@ func main() {
 					Step:        f.Step,
 				})
 			}
-			tn := fc.Model.TableName
+			tn := ""
+			if fc.Model != nil {
+				tn = fc.Model.TableName
+			}
 			if tn == "" {
 				tn = "form_" + fc.Name
 			}
@@ -224,11 +229,8 @@ func main() {
 	// 初始化处理器
 	h := handler.New(db, formInfos, *configPath, reloadFn)
 
-	// 初始化 Analytics 处理器
-	ah := analyticshandler.New(h)
-
 	// 创建路由（使用 gorilla/mux）
-	r := config.NewRouter(h, ah)
+	r := config.NewRouter(h)
 
 	// 健康检查端点
 	r.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
