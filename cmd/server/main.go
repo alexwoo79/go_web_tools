@@ -104,20 +104,7 @@ func main() {
 	// 转换表单配置
 	formInfos := make([]handler.FormInfo, 0, len(cfg.Forms))
 	for _, fc := range cfg.Forms {
-		fields := make([]handler.FieldInfo, 0, len(fc.Fields))
-		for _, f := range fc.Fields {
-			fields = append(fields, handler.FieldInfo{
-				Name:        f.Name,
-				Label:       f.Label,
-				Type:        f.Type,
-				Placeholder: f.Placeholder,
-				Required:    f.Required,
-				Options:     f.Options,
-				Min:         f.Min,
-				Max:         f.Max,
-				Step:        f.Step,
-			})
-		}
+		fields := config.ToFieldInfos(fc.Fields)
 
 		tableName := ""
 		if fc.Model != nil {
@@ -127,21 +114,22 @@ func main() {
 			tableName = "form_" + fc.Name
 		}
 		formInfos = append(formInfos, handler.FormInfo{
-			Name:          fc.Name,
-			Title:         fc.Title,
-			Description:   fc.Description,
-			Category:      fc.Category,
-			Pinned:        fc.Pinned,
-			SortOrder:     fc.SortOrder,
-			Priority:      fc.Priority,
-			Status:        fc.Status,
-			PublishAt:     fc.PublishAt,
-			ExpireAt:      fc.ExpireAt,
-			DataDirectory: "",
-			Model:         struct{ TableName string }{TableName: tableName},
-			Fields:        fields,
-			FileModTime:   fc.FileModTime,
-			ConfigSource:  fc.ConfigSource,
+			Name:                fc.Name,
+			Title:               fc.Title,
+			Description:         fc.Description,
+			Category:            fc.Category,
+			Pinned:              fc.Pinned,
+			SortOrder:           fc.SortOrder,
+			Priority:            fc.Priority,
+			Status:              fc.Status,
+			PublishAt:           fc.PublishAt,
+			ExpireAt:            fc.ExpireAt,
+			DataDirectory:       "",
+			Model:               struct{ TableName string }{TableName: tableName},
+			Fields:              fields,
+			WeightSumTotalLimit: fc.WeightSumTotalLimit,
+			FileModTime:         fc.FileModTime,
+			ConfigSource:        fc.ConfigSource,
 		})
 
 		// 动态创建或更新数据库表结构
@@ -185,20 +173,7 @@ func main() {
 		}
 		var infos []handler.FormInfo
 		for _, fc := range newCfg.Forms {
-			fields := make([]handler.FieldInfo, 0, len(fc.Fields))
-			for _, f := range fc.Fields {
-				fields = append(fields, handler.FieldInfo{
-					Name:        f.Name,
-					Label:       f.Label,
-					Type:        f.Type,
-					Placeholder: f.Placeholder,
-					Required:    f.Required,
-					Options:     f.Options,
-					Min:         f.Min,
-					Max:         f.Max,
-					Step:        f.Step,
-				})
-			}
+			fields := config.ToFieldInfos(fc.Fields)
 			tn := ""
 			if fc.Model != nil {
 				tn = fc.Model.TableName
@@ -207,20 +182,21 @@ func main() {
 				tn = "form_" + fc.Name
 			}
 			infos = append(infos, handler.FormInfo{
-				Name:         fc.Name,
-				Title:        fc.Title,
-				Description:  fc.Description,
-				Category:     fc.Category,
-				Pinned:       fc.Pinned,
-				SortOrder:    fc.SortOrder,
-				Priority:     fc.Priority,
-				Status:       fc.Status,
-				PublishAt:    fc.PublishAt,
-				ExpireAt:     fc.ExpireAt,
-				Model:        struct{ TableName string }{TableName: tn},
-				Fields:       fields,
-				FileModTime:  fc.FileModTime,
-				ConfigSource: fc.ConfigSource,
+				Name:                fc.Name,
+				Title:               fc.Title,
+				Description:         fc.Description,
+				Category:            fc.Category,
+				Pinned:              fc.Pinned,
+				SortOrder:           fc.SortOrder,
+				Priority:            fc.Priority,
+				Status:              fc.Status,
+				PublishAt:           fc.PublishAt,
+				ExpireAt:            fc.ExpireAt,
+				Model:               struct{ TableName string }{TableName: tn},
+				Fields:              fields,
+				WeightSumTotalLimit: fc.WeightSumTotalLimit,
+				FileModTime:         fc.FileModTime,
+				ConfigSource:        fc.ConfigSource,
 			})
 		}
 		return infos, nil

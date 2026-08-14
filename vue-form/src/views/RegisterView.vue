@@ -51,7 +51,7 @@ async function register() {
       <form @submit.prevent="register">
         <div class="field">
           <label>用户名</label>
-          <input v-model="username" type="text" placeholder="请输入用户名（3-32字符）" required />
+          <input v-model="username" type="text" placeholder="请输入用户名（必填）" required />
         </div>
         <div class="field">
           <label>密码</label>

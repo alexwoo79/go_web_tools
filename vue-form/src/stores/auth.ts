@@ -4,7 +4,20 @@ import { defineStore } from 'pinia'
 export interface AuthUser {
   id: number
   username: string
-  role: 'admin' | 'user'
+  role: string
+}
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: '管理员',
+  user: '普通用户',
+  staff: '职员',
+  dept_head: '部门负责人',
+  division_leader: '分管领导',
+  top_leader: '主管领导',
+}
+
+export function roleLabel(role: string): string {
+  return ROLE_LABELS[role] ?? role
 }
 
 export const useAuthStore = defineStore('auth', () => {

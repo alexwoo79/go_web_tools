@@ -118,6 +118,16 @@ go-web/
 
 ## 🛠️ 开发
 
+### 📊 Excel → 表单 YAML（由 Codex Skill 完成）
+
+Excel 转 YAML 存在结构不确定性（合并单元格、多级表头、区块表格等），**Go 程序不内置 Excel 解析**，
+转换工作由仓库内的 Codex Skill 交互式完成：
+
+- Skill 位置：`skills/forms-go/`（名 forms_go），安装到 `~/.codex/skills/` 后对 Codex 说「把这份 Excel 变成在线表单并上线」或「构造一个 XX 表单」；
+- 内置可执行脚本 `analyze_excel.py`（结构分析）与 `excel_to_yaml.py`（生成 YAML，支持 `--label`/`--type` 等参数修正）；
+- 生成的 YAML 通过管理后台「新增表单」粘贴上线，或写入独立 YAML（根目录 `*.yaml` 自动加载）；
+- 仓库根目录 `AGENTS.md` 已内置完整工作流与 YAML 规范。
+
 ### 最小操作
 
 前后端分离调试是默认推荐方式：
@@ -230,4 +240,3 @@ gh auth login
 ```
 
 - 注意：确保 `GITHUB_TOKEN` 的权限包含 `repo`（用于创建 Release 和上传资产）。
-

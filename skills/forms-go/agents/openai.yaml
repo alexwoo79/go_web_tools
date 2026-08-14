@@ -1,0 +1,4 @@
+interface:
+  display_name: "forms_go"
+  short_description: "Excel/CSV/自然语言 → Go 表单 YAML"
+  default_prompt: "构造一个表单，或把 Excel 转成表单 YAML"

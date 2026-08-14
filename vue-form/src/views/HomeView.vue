@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore, roleLabel } from '../stores/auth'
 
 interface FormItem {
   Name: string
@@ -121,7 +121,7 @@ function isExpiringToday(raw?: string): boolean {
       <nav>
         <span v-if="auth.user" class="header-user-badge">
           {{ auth.user.username }}
-          <span class="header-user-role">{{ auth.user.role === 'admin' ? '管理员' : '普通用户' }}</span>
+          <span class="header-user-role">{{ roleLabel(auth.user.role) }}</span>
         </span>
         <a v-if="auth.user" href="/change-password" @click.prevent="router.push('/change-password')">修改密码</a>
         <a v-if="auth.user?.role === 'admin'" href="/admin" @click.prevent="router.push('/admin')">管理后台</a>

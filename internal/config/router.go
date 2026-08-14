@@ -119,9 +119,27 @@ func NewRouter(h *handler.Handler) *mux.Router {
 	r.HandleFunc("/api/admin/users/import", h.RequireAdmin(h.ImportUsersHandler)).Methods("POST")
 	r.HandleFunc("/api/admin/users/{userId}", h.RequireAdmin(h.DeleteUserByAdminHandler)).Methods("DELETE")
 	r.HandleFunc("/api/admin/user-role", h.RequireAdmin(h.UpdateUserRoleHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/user-department", h.RequireAdmin(h.UpdateUserDepartmentHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/user-departments", h.RequireAdmin(h.UpdateUserDepartmentsHandler)).Methods("POST")
 	r.HandleFunc("/api/admin/user-password", h.RequireAdmin(h.AdminUpdateUserPasswordHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/departments", h.RequireAdmin(h.ListDepartmentsHandler)).Methods("GET")
+	r.HandleFunc("/api/admin/departments", h.RequireAdmin(h.CreateDepartmentHandler)).Methods("POST")
+	r.HandleFunc("/api/admin/departments/{id}", h.RequireAdmin(h.DeleteDepartmentHandler)).Methods("DELETE")
+	r.HandleFunc("/api/admin/assessment-periods", h.RequireAdmin(h.ListAssessmentPeriodsHandler)).Methods("GET")
+	r.HandleFunc("/api/admin/assessment-periods", h.RequireAdmin(h.CreateAssessmentPeriodHandler)).Methods("POST")
+	r.HandleFunc("/api/assessment/me", h.RequireLogin(h.MyAssessmentHandler)).Methods("GET")
+	r.HandleFunc("/api/assessment/review", h.RequireLogin(h.ReviewListHandler)).Methods("GET")
+	r.HandleFunc("/api/assessment/records/{id}", h.RequireLogin(h.AssessmentRecordDetailHandler)).Methods("GET")
+	r.HandleFunc("/api/assessment/records/{id}/review", h.RequireLogin(h.AssessmentReviewHandler)).Methods("POST")
 	r.HandleFunc("/api/public/forms/{token}", h.PublicFormPageHandler).Methods("GET")
 	r.HandleFunc("/api/public/submit/{token}", h.PublicSubmitHandler).Methods("POST")
+
+	// 未匹配的 /api/* 返回 JSON 404（避免被 SPA 兜底成 index.html）
+	r.PathPrefix("/api/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"接口不存在"}`))
+	})
 
 	// 所有其他路由由 Vue SPA 处理
 	r.PathPrefix("/").Handler(spa)

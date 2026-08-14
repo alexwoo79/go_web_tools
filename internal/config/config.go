@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go-web/internal/handler"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -40,8 +42,10 @@ type FormConfig struct {
 	Fields        []*FormField `yaml:"fields"`
 	DataDirectory string       `yaml:"data_directory"`
 	Model         *FormModel   `yaml:"model"`
-	ConfigSource  string       `yaml:"-"` // 记录配置来源文件
-	FileModTime   int64        `yaml:"-"` // 记录配置文件修改时间戳
+	// 表单级约束：所有 repeated_group 的权重求和不得超过该上限（如两个表格合计 ≤ 1）
+	WeightSumTotalLimit *float64 `yaml:"weight_sum_total_limit,omitempty"`
+	ConfigSource        string   `yaml:"-"` // 记录配置来源文件
+	FileModTime         int64    `yaml:"-"` // 记录配置文件修改时间戳
 }
 
 type FormField struct {
@@ -51,14 +55,49 @@ type FormField struct {
 	Placeholder string   `yaml:"placeholder"`
 	Required    bool     `yaml:"required"`
 	Options     []string `yaml:"options"`
+	OptionsFrom string   `yaml:"options_from,omitempty"` // 动态选项来源：users | departments | roles
 	Min         *float64 `yaml:"min"`
 	Max         *float64 `yaml:"max"`
 	Step        *float64 `yaml:"step"`
 	Regex       string   `yaml:"regex"`
+	// repeated_group：可重复表格行字段
+	GroupFields []*FormField `yaml:"group_fields,omitempty"`
+	DefaultRows int          `yaml:"default_rows,omitempty"`
+	MinRows     int          `yaml:"min_rows,omitempty"`
+	MaxRows     int          `yaml:"max_rows,omitempty"`
+	// 组内权重合计约束：对该组内 weight_sum_field 字段求和，不得超过 weight_sum_limit
+	WeightSumField string   `yaml:"weight_sum_field,omitempty"`
+	WeightSumLimit *float64 `yaml:"weight_sum_limit,omitempty"`
 }
 
 type FormModel struct {
 	TableName string `yaml:"table_name"`
+}
+
+// ToFieldInfos 将配置字段递归转换为 handler.FieldInfo（支持 repeated_group 子字段）。
+func ToFieldInfos(fields []*FormField) []handler.FieldInfo {
+	out := make([]handler.FieldInfo, 0, len(fields))
+	for _, f := range fields {
+		out = append(out, handler.FieldInfo{
+			Name:           f.Name,
+			Label:          f.Label,
+			Type:           f.Type,
+			Placeholder:    f.Placeholder,
+			Required:       f.Required,
+			Options:        f.Options,
+			OptionsFrom:    f.OptionsFrom,
+			Min:            f.Min,
+			Max:            f.Max,
+			Step:           f.Step,
+			GroupFields:    ToFieldInfos(f.GroupFields),
+			DefaultRows:    f.DefaultRows,
+			MinRows:        f.MinRows,
+			MaxRows:        f.MaxRows,
+			WeightSumField: f.WeightSumField,
+			WeightSumLimit: f.WeightSumLimit,
+		})
+	}
+	return out
 }
 
 // Load 加载主配置文件并合并所有包含的配置

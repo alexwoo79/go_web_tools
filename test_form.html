@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试表单 - 员工绩效季度考核目标责任书（表格版）</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f1f5f9;
+      padding: 24px 16px;
+      color: #0f172a;
+    }
+    .container { max-width: min(1320px, 96vw); margin: 0 auto; }
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 18px rgba(2, 6, 23, .08);
+      padding: 28px 30px;
+      margin-bottom: 20px;
+    }
+    h1 { font-size: 22px; text-align: center; margin-bottom: 6px; }
+    .desc { color: #64748b; text-align: center; font-size: 13px; margin-bottom: 22px; }
+    .tip {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      font-size: 12px;
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+    .info-item label { display: block; font-size: 13px; color: #475569; margin-bottom: 5px; font-weight: 600; }
+    .info-item input {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+    }
+    .info-item input:focus { border-color: #2250bb; box-shadow: 0 0 0 3px rgba(34, 80, 187, .12); }
+    .section-title { font-size: 16px; font-weight: 700; margin-bottom: 10px; }
+    .section-title small { color: #94a3b8; font-weight: 400; font-size: 12px; margin-left: 8px; }
+    .table-wrap { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 10px; }
+    table { width: 100%; min-width: 860px; border-collapse: collapse; font-size: 13px; }
+    th { border-bottom: 1px solid #edf2f7; border-right: 1px solid #edf2f7; padding: 7px 8px; text-align: left; vertical-align: top; }
+    td { border-bottom: 1px solid #edf2f7; border-right: 1px solid #edf2f7; padding: 0; text-align: left; vertical-align: top; }
+    th:last-child, td:last-child { border-right: none; }
+    thead th { background: #f8fafc; color: #334155; font-weight: 600; white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: none; }
+    td input, td select, td textarea {
+      width: 100%;
+      min-width: 92px;
+      padding: 8px 9px;
+      border: none;
+      border-radius: 0;
+      font-size: 13px;
+      background: #fff;
+      outline: none;
+      box-shadow: none;
+    }
+    td:focus-within { background: #eef4ff; }
+    td input[type="number"]::-webkit-inner-spin-button,
+    td input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    td textarea { resize: vertical; }
+    .op-col { width: 56px; text-align: center; padding: 4px 0; }
+    .weight-sum {
+      margin: 6px 0 2px;
+      font-size: 13px;
+      color: #475569;
+    }
+    .weight-sum.over { color: #dc2626; font-weight: 700; }
+    .btn {
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-add {
+      border: 1px dashed #93aee8;
+      background: #fff;
+      color: #2250bb;
+      padding: 7px 14px;
+    }
+    .btn-remove {
+      border: 1px solid #fecaca;
+      background: #fff;
+      color: #dc2626;
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+    .btn-submit { background: #2250bb; color: #fff; padding: 10px 26px; font-size: 14px; }
+    .btn-sample { background: #fff; color: #334155; border: 1px solid #cbd5e1; }
+    .btn-reset { background: #fff; color: #b91c1c; border: 1px solid #fecaca; }
+    #result { margin-top: 18px; display: none; }
+    #result.ok { border: 1px solid #bbf7d0; background: #f0fdf4; color: #166534; }
+    #result.err { border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; }
+    #result pre {
+      margin-top: 8px;
+      max-height: 260px;
+      overflow: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .result-msg { font-size: 14px; font-weight: 600; padding: 10px 14px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>员工绩效季度考核目标责任书（表格版）</h1>
+      <p class="desc">测试 repeated_group 可增删行表格表单 · 表单 name: jixiao_2026q2_table</p>
+      <div class="tip">
+        本页是独立测试页：可直接双击打开预览（提交时展示 JSON），
+        也可由 Go 服务托管后真实提交到 <code>/api/submit/jixiao_2026q2_table</code>。
+      </div>
+
+      <div class="info-grid">
+        <div class="info-item">
+          <label>部门</label>
+          <input id="bu_men" placeholder="请输入部门" value="设计研究部">
+        </div>
+        <div class="info-item">
+          <label>岗位</label>
+          <input id="gang_wei" placeholder="请输入岗位" value="职员">
+        </div>
+        <div class="info-item">
+          <label>姓名</label>
+          <input id="xing_ming" placeholder="请输入姓名" value="董俊杰">
+        </div>
+      </div>
+
+      <div class="section-title">重点（专项）工作任务<small>key_tasks · 可增删行</small></div>
+      <div class="table-wrap">
+        <table id="keyTasksTable">
+          <thead>
+            <tr>
+              <th>序号</th>
+              <th>考核指标 *</th>
+              <th>单项权重</th>
+              <th>考核要点与目标</th>
+              <th>衡量标准</th>
+              <th>数据来源</th>
+              <th>得分</th>
+              <th>备注</th>
+              <th class="op-col">操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button class="btn btn-add" data-add="key_tasks">＋ 添加一行</button>
+      <div class="weight-sum" id="keyTasksWeight"></div>
+
+      <div class="section-title" style="margin-top:26px;">日常工作任务<small>daily_tasks · 可增删行</small></div>
+      <div class="table-wrap">
+        <table id="dailyTasksTable">
+          <thead>
+            <tr>
+              <th>序号</th>
+              <th>考核指标 *</th>
+              <th>单项权重</th>
+              <th>考核要点与目标</th>
+              <th>衡量标准</th>
+              <th>数据来源</th>
+              <th>得分</th>
+              <th>备注</th>
+              <th class="op-col">操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <button class="btn btn-add" data-add="daily_tasks">＋ 添加一行</button>
+      <div class="weight-sum" id="dailyTasksWeight"></div>
+
+      <div class="actions">
+        <button class="btn btn-submit" id="btnSubmit">提交测试</button>
+        <button class="btn btn-sample" id="btnSample">载入样例数据</button>
+        <button class="btn btn-reset" id="btnReset">清空</button>
+      </div>
+      <div class="weight-sum" id="totalWeight"></div>
+
+      <div id="result"><div class="result-msg" id="resultMsg"></div><pre id="resultJson"></pre></div>
+    </div>
+  </div>
+
+  <script>
+    const MAX_ROWS = 100;
+    const MIN_ROWS = 1;
+    const COLUMNS = ['xu_hao', 'kao_he_zhi_biao', 'dan_xiang_quan_zhong',
+      'kao_he_yao_dian_yu_mu_biao', 'heng_liang_biao_zhun', 'shu_ju_lai_yuan', 'de_fen', 'bei_zhu'];
+    const WEIGHT_FIELD = 'dan_xiang_quan_zhong';
+    const WEIGHT_LIMITS = { key_tasks: 1, daily_tasks: 1 };
+
+    function cellHtml(name) {
+      switch (name) {
+        case 'kao_he_yao_dian_yu_mu_biao':
+        case 'bei_zhu':
+          return `<textarea name="${name}" rows="2"></textarea>`;
+        case 'de_fen':
+          return `<input name="${name}" type="number" min="0" max="100" step="any">`;
+        case 'xu_hao':
+        case 'dan_xiang_quan_zhong':
+          return `<input name="${name}" type="number" min="0" step="any">`;
+        default:
+          return `<input name="${name}" type="text">`;
+      }
+    }
+
+    function createRow() {
+      const tr = document.createElement('tr');
+      COLUMNS.forEach(name => {
+        const td = document.createElement('td');
+        td.innerHTML = cellHtml(name);
+        tr.appendChild(td);
+      });
+      const op = document.createElement('td');
+      op.className = 'op-col';
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn btn-remove';
+      del.textContent = '删除';
+      del.addEventListener('click', () => removeRow(tr));
+      op.appendChild(del);
+      tr.appendChild(op);
+      return tr;
+    }
+
+    function tbodyOf(field) {
+      return document.getElementById(field === 'key_tasks' ? 'keyTasksTable' : 'dailyTasksTable')
+        .querySelector('tbody');
+    }
+
+    function addRow(field, rows = 1) {
+      const tbody = tbodyOf(field);
+      for (let i = 0; i < rows; i++) {
+        if (tbody.rows.length >= MAX_ROWS) return;
+        tbody.appendChild(createRow());
+      }
+      updateWeights();
+    }
+
+    function removeRow(tr) {
+      const tbody = tr.parentElement;
+      if (tbody.rows.length <= MIN_ROWS) return;
+      tbody.removeChild(tr);
+      updateWeights();
+    }
+
+    function collectRows(field) {
+      return Array.from(tbodyOf(field).rows).map(tr => {
+        const row = {};
+        tr.querySelectorAll('input, textarea').forEach(el => {
+          const v = el.value.trim();
+          if (['xu_hao', 'dan_xiang_quan_zhong', 'de_fen'].includes(el.name)) {
+            row[el.name] = v === '' ? null : Number(v);
+          } else {
+            row[el.name] = v;
+          }
+        });
+        return row;
+      }).filter(r => !rowIsEmpty(r));
+    }
+
+    function rowIsEmpty(row) {
+      return Object.values(row).every(v => v === '' || v === null || v === undefined);
+    }
+
+    function buildPayload() {
+      return {
+        bu_men: document.getElementById('bu_men').value.trim(),
+        gang_wei: document.getElementById('gang_wei').value.trim(),
+        xing_ming: document.getElementById('xing_ming').value.trim(),
+        key_tasks: collectRows('key_tasks'),
+        daily_tasks: collectRows('daily_tasks'),
+      };
+    }
+
+    function tableWeight(field) {
+      return collectRows(field).reduce((sum, row) => sum + (Number(row[WEIGHT_FIELD]) || 0), 0);
+    }
+
+    function updateWeights() {
+      const total = tableWeight('key_tasks') + tableWeight('daily_tasks');
+      ['key_tasks', 'daily_tasks'].forEach(field => {
+        const el = document.getElementById(field + 'Weight');
+        const sum = tableWeight(field);
+        const limit = WEIGHT_LIMITS[field];
+        el.textContent = `权重合计：${sum.toFixed(3)}（上限 ${limit}）`;
+        el.classList.toggle('over', sum > limit + 1e-9);
+      });
+      const totalEl = document.getElementById('totalWeight');
+      totalEl.textContent = `两个表格权重合计：${total.toFixed(3)}（不可大于 1）`;
+      totalEl.classList.toggle('over', total > 1 + 1e-9);
+    }
+
+    function showResult(ok, msg, payload) {
+      const box = document.getElementById('result');
+      box.style.display = 'block';
+      box.className = ok ? 'ok' : 'err';
+      document.getElementById('resultMsg').textContent = msg;
+      document.getElementById('resultJson').textContent = JSON.stringify(payload, null, 2);
+    }
+
+    document.querySelectorAll('[data-add]').forEach(btn => {
+      btn.addEventListener('click', () => addRow(btn.dataset.add));
+    });
+
+    document.getElementById('btnSubmit').addEventListener('click', async () => {
+      const payload = buildPayload();
+      const total = tableWeight('key_tasks') + tableWeight('daily_tasks');
+      if (total > 1 + 1e-9 ||
+          tableWeight('key_tasks') > WEIGHT_LIMITS.key_tasks + 1e-9 ||
+          tableWeight('daily_tasks') > WEIGHT_LIMITS.daily_tasks + 1e-9) {
+        showResult(false, '❌ 权重校验失败：各表格权重不得超过上限，两个表格权重合计不得大于 1', payload);
+        return;
+      }
+      try {
+        const res = await fetch('/api/submit/jixiao_2026q2_table', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          showResult(false, '❌ 未登录：请先访问 /login 登录后再提交，或直接使用正式表单页 /forms/jixiao_2026q2_table', payload);
+          return;
+        }
+        showResult(res.ok, res.ok ? '✅ 提交成功：' + (data.message || '') : '❌ 提交失败：' + (data.message || res.status), payload);
+      } catch (e) {
+        // 文件方式打开时没有后端，仅展示 JSON 负载
+        showResult(true, '✅ 已生成提交 JSON（当前以文件方式打开，未真实提交。挂到服务上即可提交）', payload);
+      }
+    });
+
+    document.getElementById('btnSample').addEventListener('click', () => {
+      tbodyOf('key_tasks').innerHTML = '';
+      tbodyOf('daily_tasks').innerHTML = '';
+      const keySample = [
+        ['1', '太原彭村项目', '0.1', '完成彭村项目相关设计工作：完成3#、6#、9#10#住宅门头大样墙身节点绘制。', '图纸归档', '项目组', '90', ''],
+        ['2', '《物业高频服务场景》课题', '0.45', '参与课题申报并编制分项研究工作。', '立项文件', '课题组', '90', ''],
+        ['3', '《住宅项目缺陷防控》课题', '0.09', '完成课题立项并编制研究计划。', '立项文件', '课题组', '90', ''],
+      ];
+      const dailySample = [
+        ['1', '普天项目', '0.08', '完成普天项目地库方案设计。', '方案评审', '项目组', '90', ''],
+      ];
+      fillRows('key_tasks', keySample);
+      fillRows('daily_tasks', dailySample);
+      updateWeights();
+      document.getElementById('result').style.display = 'none';
+    });
+
+    function fillRows(field, rows) {
+      addRow(field, rows.length);
+      const trs = tbodyOf(field).rows;
+      rows.forEach((values, ri) => {
+        trs[ri].querySelectorAll('input, textarea').forEach((el, ci) => {
+          el.value = values[ci] || '';
+        });
+      });
+    }
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+      tbodyOf('key_tasks').innerHTML = '';
+      tbodyOf('daily_tasks').innerHTML = '';
+      addRow('key_tasks', 3);
+      addRow('daily_tasks', 2);
+      document.getElementById('bu_men').value = '';
+      document.getElementById('gang_wei').value = '';
+      document.getElementById('xing_ming').value = '';
+      document.getElementById('result').style.display = 'none';
+      updateWeights();
+    });
+
+    // 输入变化实时刷新权重合计
+    document.addEventListener('input', e => {
+      if (e.target.matches('td input, td textarea')) updateWeights();
+    });
+
+    // 初始化：重点任务 3 行、日常任务 2 行
+    addRow('key_tasks', 3);
+    addRow('daily_tasks', 2);
+    updateWeights();
+  </script>
+</body>
+</html>

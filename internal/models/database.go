@@ -20,7 +20,37 @@ type UserRecord struct {
 	Username     string
 	PasswordHash string
 	Role         string
+	Department   string
 	CreatedAt    string
+}
+
+type AssessmentPeriod struct {
+	ID        int64
+	Name      string
+	FormName  string
+	Status    string
+	CreatedAt string
+}
+
+type AssessmentRecord struct {
+	ID         int64
+	PeriodID   int64
+	UserID     int
+	Username   string
+	Department string
+	FormName   string
+	TableName  string
+	RowID      int64
+	Status     string
+	TotalScore *float64
+	ReviewedBy string
+	UpdatedAt  string
+}
+
+type Department struct {
+	ID        int64
+	Name      string
+	CreatedAt string
 }
 
 type ShareLinkRecord struct {
@@ -50,6 +80,157 @@ func NewDatabase(dbPath, dbType string) (*Database, error) {
 
 func (d *Database) Close() error {
 	return d.db.Close()
+}
+
+// ---- 考核模块 ----
+
+func (d *Database) CreateAssessmentPeriod(name, formName string) (int64, error) {
+	res, err := d.db.Exec(`INSERT INTO assessment_periods (name, form_name) VALUES (?, ?)`, name, formName)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *Database) ListAssessmentPeriods() ([]AssessmentPeriod, error) {
+	rows, err := d.db.Query(`SELECT id, name, form_name, status, created_at FROM assessment_periods ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]AssessmentPeriod, 0)
+	for rows.Next() {
+		var p AssessmentPeriod
+		if err := rows.Scan(&p.ID, &p.Name, &p.FormName, &p.Status, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) GetActiveAssessmentPeriod() (*AssessmentPeriod, error) {
+	var p AssessmentPeriod
+	err := d.db.QueryRow(
+		`SELECT id, name, form_name, status, created_at FROM assessment_periods WHERE status='active' ORDER BY id DESC LIMIT 1`,
+	).Scan(&p.ID, &p.Name, &p.FormName, &p.Status, &p.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (d *Database) CreateAssessmentRecord(rec AssessmentRecord) (int64, error) {
+	res, err := d.db.Exec(
+		`INSERT INTO assessment_records (period_id, user_id, username, department, form_name, table_name, row_id, status, reviewed_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		rec.PeriodID, rec.UserID, rec.Username, rec.Department, rec.FormName, rec.TableName, rec.RowID, rec.Status, rec.ReviewedBy,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *Database) GetAssessmentRecordByUser(periodID int64, userID int, formName string) (*AssessmentRecord, error) {
+	var r AssessmentRecord
+	err := d.db.QueryRow(
+		`SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, total_score, reviewed_by, updated_at
+		 FROM assessment_records WHERE period_id=? AND user_id=? AND form_name=? LIMIT 1`,
+		periodID, userID, formName,
+	).Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (d *Database) UpdateAssessmentRecordRow(recordID, rowID int64) error {
+	_, err := d.db.Exec(
+		`UPDATE assessment_records SET row_id=?, updated_at=datetime('now') WHERE id=?`,
+		rowID, recordID,
+	)
+	return err
+}
+
+func (d *Database) GetAssessmentRecordByID(id int64) (*AssessmentRecord, error) {
+	var r AssessmentRecord
+	err := d.db.QueryRow(
+		`SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, total_score, reviewed_by, updated_at
+		 FROM assessment_records WHERE id=? LIMIT 1`,
+		id,
+	).Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// ListAssessmentRecords 列出考核记录；status/department 为空表示不限。
+func (d *Database) ListAssessmentRecords(periodID int64, status, department string) ([]AssessmentRecord, error) {
+	query := `SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, total_score, reviewed_by, updated_at
+		FROM assessment_records WHERE 1=1`
+	args := make([]interface{}, 0)
+	if periodID > 0 {
+		query += ` AND period_id=?`
+		args = append(args, periodID)
+	}
+	if status != "" {
+		query += ` AND status=?`
+		args = append(args, status)
+	}
+	if department != "" {
+		query += ` AND department=?`
+		args = append(args, department)
+	}
+	query += ` ORDER BY id ASC`
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]AssessmentRecord, 0)
+	for rows.Next() {
+		var r AssessmentRecord
+		if err := rows.Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) UpdateAssessmentRecordStatus(id int64, status, reviewedBy string, totalScore *float64) error {
+	_, err := d.db.Exec(
+		`UPDATE assessment_records SET status=?, reviewed_by=?, total_score=?, updated_at=datetime('now') WHERE id=?`,
+		status, reviewedBy, totalScore, id,
+	)
+	return err
+}
+
+// UpdateRowData 更新表单提交行的 data JSON 与指定的列（repeated_group 列存 JSON 字符串）。
+func (d *Database) UpdateRowData(tableName string, rowID int64, data map[string]interface{}, groupJSON map[string]string) error {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("序列化 data 失败：%v", err)
+	}
+	columns := []string{"data"}
+	values := []interface{}{jsonData}
+	for col, val := range groupJSON {
+		columns = append(columns, fmt.Sprintf("`%s`", col))
+		values = append(values, val)
+	}
+	values = append(values, rowID)
+	query := fmt.Sprintf("UPDATE `%s` SET %s WHERE id = ?",
+		tableName, strings.Join(columns, " = ?, ")+" = ?")
+	_, err = d.db.Exec(query, values...)
+	return err
 }
 
 // columnExists 检查表中的列是否存在
@@ -139,6 +320,8 @@ func (d *Database) getFieldType(formFieldType string) string {
 		return "REAL"
 	case "date", "time":
 		return "TEXT" // SQLite 没有专门的日期类型
+	case "repeated_group":
+		return "TEXT" // 表格行数据以 JSON 数组存储
 	default:
 		return "TEXT"
 	}
@@ -178,7 +361,7 @@ func (d *Database) UpdateTableSchema(tableName string, oldFields []FieldInfo, ne
 	return nil
 }
 
-func (d *Database) Insert(tableName string, data map[string]interface{}) error {
+func (d *Database) Insert(tableName string, data map[string]interface{}) (int64, error) {
 	// 动态构建列名和占位符
 	columns := make([]string, 0)
 	values := make([]interface{}, 0)
@@ -191,7 +374,7 @@ func (d *Database) Insert(tableName string, data map[string]interface{}) error {
 	// 首先处理 data 字段（存储原始 JSON）
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("序列化 data 失败：%v", err)
+		return 0, fmt.Errorf("序列化 data 失败：%v", err)
 	}
 	columns = append(columns, "data")
 	values = append(values, jsonData)
@@ -207,12 +390,22 @@ func (d *Database) Insert(tableName string, data map[string]interface{}) error {
 		if !d.columnExists(tableName, key) {
 			fmt.Printf("❌ 错误：表 %s 中不存在列 %s\n", tableName, key)
 			fmt.Printf("📋 表 %s 的可用列：%v\n", tableName, d.getTableColumns(tableName))
-			return fmt.Errorf("表 %s 没有列 %s", tableName, key)
+			return 0, fmt.Errorf("表 %s 没有列 %s", tableName, key)
 		}
 
-		// 处理数组类型（checkbox 多选）
+		// 处理数组类型（checkbox 多选 / repeated_group 表格行）
 		if arr, ok := val.([]interface{}); ok {
-			// 将数组转换为逗号分隔的字符串
+			if isObjectArray(arr) {
+				// repeated_group：对象数组存为 JSON 字符串
+				if b, err := json.Marshal(arr); err == nil {
+					val = string(b)
+				}
+				columns = append(columns, fmt.Sprintf("`%s`", key))
+				values = append(values, val)
+				placeholders = append(placeholders, "?")
+				continue
+			}
+			// checkbox：将字符串数组转换为逗号分隔的字符串
 			strArr := make([]string, len(arr))
 			for i, v := range arr {
 				if s, ok := v.(string); ok {
@@ -259,11 +452,23 @@ func (d *Database) Insert(tableName string, data map[string]interface{}) error {
 
 	fmt.Printf("✅ 执行插入：SQL=%s\n", query)
 
-	_, err = d.db.Exec(query, values...)
+	res, err := d.db.Exec(query, values...)
 	if err != nil {
 		fmt.Printf("❌ 插入失败：%v\n", err)
+		return 0, err
 	}
-	return err
+	return res.LastInsertId()
+}
+
+// isObjectArray 判断数组元素是否为对象（repeated_group 的行数据）。
+func isObjectArray(arr []interface{}) bool {
+	for _, v := range arr {
+		switch v.(type) {
+		case map[string]interface{}, map[string]string:
+			return true
+		}
+	}
+	return false
 }
 
 func (d *Database) EnsureUserTable() error {
@@ -272,25 +477,166 @@ func (d *Database) EnsureUserTable() error {
 		username TEXT NOT NULL UNIQUE,
 		password_hash TEXT NOT NULL,
 		role TEXT NOT NULL DEFAULT 'user',
+		department TEXT NOT NULL DEFAULT '',
 		created_at TEXT NOT NULL DEFAULT (datetime('now'))
 	)`
-	_, err := d.db.Exec(query)
+	if _, err := d.db.Exec(query); err != nil {
+		return err
+	}
+	// 老库兼容：补充 department 列
+	if !d.columnExists("users", "department") {
+		if _, err := d.db.Exec(`ALTER TABLE users ADD COLUMN department TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// EnsureAssessmentTables 创建考核模块所需表。
+func (d *Database) EnsureAssessmentTables() error {
+	periods := `CREATE TABLE IF NOT EXISTS assessment_periods (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		form_name TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'active',
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`
+	if _, err := d.db.Exec(periods); err != nil {
+		return err
+	}
+	records := `CREATE TABLE IF NOT EXISTS assessment_records (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		period_id INTEGER NOT NULL,
+		user_id INTEGER NOT NULL,
+		username TEXT NOT NULL,
+		department TEXT NOT NULL DEFAULT '',
+		form_name TEXT NOT NULL,
+		table_name TEXT NOT NULL,
+		row_id INTEGER NOT NULL,
+		status TEXT NOT NULL DEFAULT 'submitted',
+		total_score REAL,
+		reviewed_by TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+		UNIQUE(period_id, user_id, form_name)
+	)`
+	_, err := d.db.Exec(records)
 	return err
 }
 
-func (d *Database) CreateUser(username, passwordHash, role string) (int64, error) {
-	query := `INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, datetime('now'))`
-	res, err := d.db.Exec(query, username, passwordHash, role)
+// EnsureDepartmentTables 创建部门表与领导管理范围关联表，并把现有用户的部门文本回填为部门记录。
+func (d *Database) EnsureDepartmentTables() error {
+	depts := `CREATE TABLE IF NOT EXISTS departments (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL UNIQUE,
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`
+	if _, err := d.db.Exec(depts); err != nil {
+		return err
+	}
+	links := `CREATE TABLE IF NOT EXISTS leader_departments (
+		user_id INTEGER NOT NULL,
+		department_id INTEGER NOT NULL,
+		PRIMARY KEY (user_id, department_id)
+	)`
+	if _, err := d.db.Exec(links); err != nil {
+		return err
+	}
+	// 回填：把 users.department 中已有的部门文本导入部门表（去重）
+	_, _ = d.db.Exec(`
+		INSERT OR IGNORE INTO departments (name)
+		SELECT DISTINCT department FROM users WHERE TRIM(department) <> ''`)
+	return nil
+}
+
+func (d *Database) ListDepartments() ([]Department, error) {
+	rows, err := d.db.Query(`SELECT id, name, created_at FROM departments ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]Department, 0)
+	for rows.Next() {
+		var dep Department
+		if err := rows.Scan(&dep.ID, &dep.Name, &dep.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, dep)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) CreateDepartment(name string) (int64, error) {
+	res, err := d.db.Exec(`INSERT INTO departments (name) VALUES (?)`, name)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
+func (d *Database) DeleteDepartment(id int64) error {
+	if _, err := d.db.Exec(`DELETE FROM leader_departments WHERE department_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := d.db.Exec(`DELETE FROM departments WHERE id = ?`, id)
+	return err
+}
+
+func (d *Database) DepartmentNameByID(id int64) (string, error) {
+	var name string
+	err := d.db.QueryRow(`SELECT name FROM departments WHERE id = ?`, id).Scan(&name)
+	return name, err
+}
+
+func (d *Database) SetLeaderDepartments(userID int, departmentIDs []int64) error {
+	if _, err := d.db.Exec(`DELETE FROM leader_departments WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	for _, id := range departmentIDs {
+		if _, err := d.db.Exec(
+			`INSERT OR IGNORE INTO leader_departments (user_id, department_id) VALUES (?, ?)`,
+			userID, id,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Database) GetLeaderDepartments(userID int) ([]int64, error) {
+	rows, err := d.db.Query(`SELECT department_id FROM leader_departments WHERE user_id = ? ORDER BY department_id`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) CreateUser(username, passwordHash, role, department string) (int64, error) {
+	query := `INSERT INTO users (username, password_hash, role, department, created_at) VALUES (?, ?, ?, ?, datetime('now'))`
+	res, err := d.db.Exec(query, username, passwordHash, role, department)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *Database) UpdateUserDepartment(userID int, department string) error {
+	_, err := d.db.Exec(`UPDATE users SET department = ? WHERE id = ?`, department, userID)
+	return err
+}
+
 func (d *Database) GetUserByUsername(username string) (*UserRecord, error) {
-	query := `SELECT id, username, password_hash, role, created_at FROM users WHERE username = ? LIMIT 1`
+	query := `SELECT id, username, password_hash, role, department, created_at FROM users WHERE username = ? LIMIT 1`
 	var u UserRecord
-	err := d.db.QueryRow(query, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt)
+	err := d.db.QueryRow(query, username).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.Department, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -301,9 +647,9 @@ func (d *Database) GetUserByUsername(username string) (*UserRecord, error) {
 }
 
 func (d *Database) GetUserByID(id int) (*UserRecord, error) {
-	query := `SELECT id, username, password_hash, role, created_at FROM users WHERE id = ? LIMIT 1`
+	query := `SELECT id, username, password_hash, role, department, created_at FROM users WHERE id = ? LIMIT 1`
 	var u UserRecord
-	err := d.db.QueryRow(query, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt)
+	err := d.db.QueryRow(query, id).Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.Department, &u.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -333,7 +679,7 @@ func (d *Database) UpdateUserPassword(userID int, passwordHash string) error {
 }
 
 func (d *Database) ListUsers() ([]UserRecord, error) {
-	rows, err := d.db.Query(`SELECT id, username, password_hash, role, created_at FROM users ORDER BY id ASC`)
+	rows, err := d.db.Query(`SELECT id, username, password_hash, role, department, created_at FROM users ORDER BY id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +688,7 @@ func (d *Database) ListUsers() ([]UserRecord, error) {
 	users := make([]UserRecord, 0)
 	for rows.Next() {
 		var u UserRecord
-		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &u.Department, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		users = append(users, u)

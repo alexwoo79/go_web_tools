@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
+import { useAuthStore, roleLabel } from '../stores/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
 
-const roleText = computed(() => auth.user?.role === 'admin' ? '管理员' : '普通用户')
+const roleText = computed(() => roleLabel(auth.user?.role ?? ''))
 const isAdmin = computed(() => auth.user?.role === 'admin')
 
 async function logout() {
@@ -32,6 +32,12 @@ async function logout() {
       <button class="entry-card" @click="router.push('/')">
         <h2>填写表单</h2>
         <p>进入表单中心，选择并提交业务表单。</p>
+        <span>进入 →</span>
+      </button>
+
+      <button class="entry-card" @click="router.push('/assessment')">
+        <h2>绩效考核</h2>
+        <p>我的考核填报与部门/领导评审（四层流程）。</p>
         <span>进入 →</span>
       </button>
 

@@ -1637,7 +1637,8 @@ tr:hover td { background: #f9fbff; }
 }
 
 .btn-save-config:disabled {
-  opacity: .6;
-  cursor: not-allowed;
+	opacity: .6;
+	cursor: not-allowed;
 }
+
 </style>

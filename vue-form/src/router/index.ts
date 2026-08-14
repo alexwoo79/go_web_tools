@@ -8,6 +8,7 @@ import MySubmissionsView from '../views/MySubmissionsView.vue'
 import ChangePasswordView from '../views/ChangePasswordView.vue'
 import UserManagementView from '../views/UserManagementView.vue'
 import NavigationHubView from '../views/NavigationHubView.vue'
+import AssessmentView from '../views/AssessmentView.vue'
 import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
@@ -34,6 +35,12 @@ const router = createRouter({
       name: 'my-submissions',
       component: MySubmissionsView,
       meta: { requiresAuth: true, title: '我的提交' },
+    },
+    {
+      path: '/assessment',
+      name: 'assessment',
+      component: AssessmentView,
+      meta: { requiresAuth: true, title: '绩效考核' },
     },
     {
       path: '/change-password',

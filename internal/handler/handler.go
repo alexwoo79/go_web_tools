@@ -38,6 +38,32 @@ type User struct {
 	Role     string `json:"role"` // "admin" 或 "user"
 }
 
+// 角色定义（注册/创建用户时可分配的业务角色）
+const (
+	RoleAdmin          = "admin"           // 管理员
+	RoleUser           = "user"            // 普通用户（注册默认）
+	RoleStaff          = "staff"           // 职员
+	RoleDeptHead       = "dept_head"       // 部门负责人
+	RoleDivisionLeader = "division_leader" // 分管领导
+	RoleTopLeader      = "top_leader"      // 主管领导
+)
+
+// RoleLabels 角色代码 → 中文显示名
+var RoleLabels = map[string]string{
+	RoleAdmin:          "管理员",
+	RoleUser:           "普通用户",
+	RoleStaff:          "职员",
+	RoleDeptHead:       "部门负责人",
+	RoleDivisionLeader: "分管领导",
+	RoleTopLeader:      "主管领导",
+}
+
+// isValidRole 判断角色代码是否合法
+func isValidRole(role string) bool {
+	_, ok := RoleLabels[role]
+	return ok
+}
+
 // Session 会话管理
 type Session struct {
 	ID        string
@@ -146,9 +172,11 @@ type FormInfo struct {
 	Model         struct {
 		TableName string
 	}
-	Fields       []FieldInfo
-	FileModTime  int64  // 配置文件修改时间戳
-	ConfigSource string // 来源配置文件名，空 = 主配置
+	Fields []FieldInfo
+	// 表单级约束：所有 repeated_group 权重合计上限
+	WeightSumTotalLimit *float64
+	FileModTime         int64  // 配置文件修改时间戳
+	ConfigSource        string // 来源配置文件名，空 = 主配置
 }
 
 type FieldInfo struct {
@@ -158,9 +186,18 @@ type FieldInfo struct {
 	Placeholder string
 	Required    bool
 	Options     []string
+	OptionsFrom string
 	Min         *float64
 	Max         *float64
 	Step        *float64
+	// repeated_group：可重复表格行字段
+	GroupFields []FieldInfo
+	DefaultRows int
+	MinRows     int
+	MaxRows     int
+	// 组内权重合计约束
+	WeightSumField string
+	WeightSumLimit *float64
 }
 
 func New(db *models.Database, formConfigs []FormInfo, configPath string, reloadFn func() ([]FormInfo, error)) *Handler {
@@ -184,6 +221,12 @@ func New(db *models.Database, formConfigs []FormInfo, configPath string, reloadF
 	if err := h.db.EnsureShareLinkTable(); err != nil {
 		panic("初始化分享链接表失败: " + err.Error())
 	}
+	if err := h.db.EnsureAssessmentTables(); err != nil {
+		panic("初始化考核模块表失败: " + err.Error())
+	}
+	if err := h.db.EnsureDepartmentTables(); err != nil {
+		panic("初始化部门表失败: " + err.Error())
+	}
 
 	adminUser, err := h.db.GetUserByUsername("admin")
 	if err != nil {
@@ -191,7 +234,7 @@ func New(db *models.Database, formConfigs []FormInfo, configPath string, reloadF
 	}
 	if adminUser == nil {
 		defaultPassword := hashPassword("admin123")
-		if _, err := h.db.CreateUser("admin", defaultPassword, "admin"); err != nil {
+		if _, err := h.db.CreateUser("admin", defaultPassword, "admin", ""); err != nil {
 			panic("创建默认管理员失败: " + err.Error())
 		}
 	}
@@ -605,31 +648,100 @@ func (h *Handler) FormPageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	form := map[string]interface{}{
-		"Name":          fi.Name,
-		"Title":         fi.Title,
-		"Description":   fi.Description,
-		"DataDirectory": fi.DataDirectory,
-		"Model":         fi.Model,
+		"Name":                fi.Name,
+		"Title":               fi.Title,
+		"Description":         fi.Description,
+		"DataDirectory":       fi.DataDirectory,
+		"Model":               fi.Model,
+		"WeightSumTotalLimit": fi.WeightSumTotalLimit,
+	}
+	// 带上当前登录用户信息，前端用于自动预填姓名/部门
+	if session := h.getCurrentUser(r); session != nil {
+		form["CurrentUser"] = map[string]interface{}{
+			"username":   session.Username,
+			"role":       session.Role,
+			"department": h.userDepartment(session.UserID),
+		}
 	}
 
 	// 转换字段
 	fields := make([]map[string]interface{}, 0, len(fi.Fields))
 	for _, f := range fi.Fields {
-		fields = append(fields, map[string]interface{}{
-			"Name":        f.Name,
-			"Label":       f.Label,
-			"Type":        f.Type,
-			"Placeholder": f.Placeholder,
-			"Required":    f.Required,
-			"Options":     f.Options,
-			"Min":         f.Min,
-			"Max":         f.Max,
-		})
+		fields = append(fields, h.fieldMap(f))
 	}
 	form["Fields"] = fields
 
 	// JSON 响应
 	jsonResponse(w, http.StatusOK, form)
+}
+
+// formFieldMap 将字段转换为前端可渲染的结构（支持 repeated_group 递归）。
+func (h *Handler) fieldMap(f FieldInfo) map[string]interface{} {
+	options := f.Options
+	if f.OptionsFrom != "" {
+		options = h.resolveFieldOptions(f)
+	}
+	m := map[string]interface{}{
+		"Name":           f.Name,
+		"Label":          f.Label,
+		"Type":           f.Type,
+		"Placeholder":    f.Placeholder,
+		"Required":       f.Required,
+		"Options":        options,
+		"OptionsFrom":    f.OptionsFrom,
+		"Min":            f.Min,
+		"Max":            f.Max,
+		"DefaultRows":    f.DefaultRows,
+		"MinRows":        f.MinRows,
+		"MaxRows":        f.MaxRows,
+		"WeightSumField": f.WeightSumField,
+		"WeightSumLimit": f.WeightSumLimit,
+	}
+	if len(f.GroupFields) > 0 {
+		gf := make([]map[string]interface{}, 0, len(f.GroupFields))
+		for _, g := range f.GroupFields {
+			gf = append(gf, h.fieldMap(g))
+		}
+		m["GroupFields"] = gf
+	}
+	return m
+}
+
+// resolveFieldOptions 按 options_from 从系统数据解析下拉选项。
+func (h *Handler) resolveFieldOptions(f FieldInfo) []string {
+	switch f.OptionsFrom {
+	case "users":
+		users, err := h.db.ListUsers()
+		if err != nil {
+			return f.Options
+		}
+		out := make([]string, 0, len(users))
+		for _, u := range users {
+			out = append(out, u.Username)
+		}
+		return out
+	case "departments":
+		depts, err := h.db.ListDepartments()
+		if err != nil {
+			return f.Options
+		}
+		out := make([]string, 0, len(depts))
+		for _, d := range depts {
+			out = append(out, d.Name)
+		}
+		return out
+	case "roles":
+		return []string{
+			RoleLabels[RoleUser],
+			RoleLabels[RoleStaff],
+			RoleLabels[RoleDeptHead],
+			RoleLabels[RoleDivisionLeader],
+			RoleLabels[RoleTopLeader],
+			RoleLabels[RoleAdmin],
+		}
+	default:
+		return f.Options
+	}
 }
 
 func (h *Handler) checkFormReadable(fi FormInfo) (bool, string) {
@@ -662,6 +774,33 @@ func normalizePayloadArray(val interface{}) []interface{} {
 
 func (h *Handler) validateRequiredFields(fi FormInfo, data map[string]interface{}) error {
 	for _, field := range fi.Fields {
+		// repeated_group：即使组本身非必填，只要提交了行就要校验行内必填字段
+		if field.Type == "repeated_group" {
+			rows := normalizePayloadArray(data[field.Name])
+			if field.Required && len(rows) == 0 {
+				return fmt.Errorf("%s 至少需要一行", field.Label)
+			}
+			for ri, row := range rows {
+				m, ok := row.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if groupRowEmpty(m) {
+					continue // 完全空行视为未填写，不参与必填校验
+				}
+				for _, gf := range field.GroupFields {
+					if !gf.Required {
+						continue
+					}
+					v, exists := m[gf.Name]
+					if !exists || v == nil || v == "" {
+						return fmt.Errorf("%s 第 %d 行「%s」为必填项", field.Label, ri+1, gf.Label)
+					}
+				}
+			}
+			continue
+		}
+
 		if !field.Required {
 			continue
 		}
@@ -690,10 +829,97 @@ func (h *Handler) validateRequiredFields(fi FormInfo, data map[string]interface{
 	return nil
 }
 
-func (h *Handler) finalizeSubmission(fi FormInfo, data map[string]interface{}, ownerUserID int, ip string) error {
+// groupRowEmpty 判断 repeated_group 的一行是否完全为空（全部字段无内容）。
+func groupRowEmpty(m map[string]interface{}) bool {
+	for _, v := range m {
+		switch val := v.(type) {
+		case string:
+			if strings.TrimSpace(val) != "" {
+				return false
+			}
+		case nil:
+			continue
+		default:
+			return false // 有数字/数组等值，视为有内容
+		}
+	}
+	return true
+}
+
+// validateWeightSums 校验 repeated_group 的组内权重合计不超过 weight_sum_limit。
+func (h *Handler) validateWeightSums(fi FormInfo, data map[string]interface{}) error {
+	var total float64
+	hasWeightField := false
+	for _, field := range fi.Fields {
+		if field.Type != "repeated_group" || field.WeightSumField == "" {
+			continue
+		}
+		hasWeightField = true
+		rows := normalizePayloadArray(data[field.Name])
+		var sum float64
+		for _, row := range rows {
+			m, ok := row.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if v, ok := m[field.WeightSumField]; ok {
+				sum += toFloat(v)
+			}
+		}
+		total += sum
+		if field.WeightSumLimit != nil && sum > *field.WeightSumLimit+1e-9 {
+			return fmt.Errorf("%s 权重合计 %.3f 超过上限 %.3f，请调整单项权重",
+				field.Label, sum, *field.WeightSumLimit)
+		}
+	}
+	if hasWeightField && fi.WeightSumTotalLimit != nil && total > *fi.WeightSumTotalLimit+1e-9 {
+		return fmt.Errorf("两个表格权重合计 %.3f 超过上限 %.3f，请调整单项权重",
+			total, *fi.WeightSumTotalLimit)
+	}
+	return nil
+}
+
+// toFloat 将 JSON/表单值转换为 float64（无法转换时返回 0）。
+func toFloat(v interface{}) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	default:
+		return 0
+	}
+}
+
+func (h *Handler) finalizeSubmission(fi FormInfo, data map[string]interface{}, ownerUserID int, ip string) (int64, error) {
 	data["_submitted_at"] = time.Now().Format("2006-01-02 15:04:05")
 	data["_ip"] = ip
 	data["owner_user_id"] = ownerUserID
+	// 过滤 repeated_group 的完全空行，保证入库数据干净
+	for _, field := range fi.Fields {
+		if field.Type != "repeated_group" {
+			continue
+		}
+		rows := normalizePayloadArray(data[field.Name])
+		kept := make([]interface{}, 0, len(rows))
+		for _, row := range rows {
+			if m, ok := row.(map[string]interface{}); ok && groupRowEmpty(m) {
+				continue
+			}
+			kept = append(kept, row)
+		}
+		data[field.Name] = kept
+	}
 	return h.saveToDatabase(fi, data)
 }
 
@@ -864,16 +1090,7 @@ func (h *Handler) PublicFormPageHandler(w http.ResponseWriter, r *http.Request) 
 
 	fields := make([]map[string]interface{}, 0, len(fi.Fields))
 	for _, f := range fi.Fields {
-		fields = append(fields, map[string]interface{}{
-			"Name":        f.Name,
-			"Label":       f.Label,
-			"Type":        f.Type,
-			"Placeholder": f.Placeholder,
-			"Required":    f.Required,
-			"Options":     f.Options,
-			"Min":         f.Min,
-			"Max":         f.Max,
-		})
+		fields = append(fields, h.fieldMap(f))
 	}
 	form["Fields"] = fields
 
@@ -903,8 +1120,12 @@ func (h *Handler) PublicSubmitHandler(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	if err := h.validateWeightSums(fi, data); err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 
-	if err := h.finalizeSubmission(fi, data, 0, getClientIP(r)); err != nil {
+	if _, err := h.finalizeSubmission(fi, data, 0, getClientIP(r)); err != nil {
 		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "数据库保存失败"})
 		return
 	}
@@ -1002,6 +1223,8 @@ func (h *Handler) SubmitHandler(w http.ResponseWriter, r *http.Request) {
 				data[field.Name] = values[0]
 			case "time":
 				data[field.Name] = values[0]
+			case "repeated_group":
+				data[field.Name] = values
 			default:
 				data[field.Name] = values[0]
 			}
@@ -1009,6 +1232,15 @@ func (h *Handler) SubmitHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.validateRequiredFields(fi, data); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "error",
+			"message": err.Error(),
+		})
+		return
+	}
+	if err := h.validateWeightSums(fi, data); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1029,7 +1261,8 @@ func (h *Handler) SubmitHandler(w http.ResponseWriter, r *http.Request) {
 	// 	return
 	// }
 
-	if err := h.finalizeSubmission(fi, data, session.UserID, getClientIP(r)); err != nil {
+	rowID, err := h.finalizeSubmission(fi, data, session.UserID, getClientIP(r))
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -1037,6 +1270,11 @@ func (h *Handler) SubmitHandler(w http.ResponseWriter, r *http.Request) {
 			"message": "数据库保存失败：" + err.Error(),
 		})
 		return
+	}
+
+	// 若该表单是当前考核周期的自评表，则登记考核记录（状态：已提交）
+	if period, perr := h.db.GetActiveAssessmentPeriod(); perr == nil && period != nil && period.FormName == fi.Name {
+		h.recordAssessmentSubmission(period, fi, session, rowID)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1064,7 +1302,7 @@ func (h *Handler) saveToFile(fi FormInfo, data map[string]interface{}) error {
 	return ioutil.WriteFile(filename, jsonData, 0644)
 }
 
-func (h *Handler) saveToDatabase(fi FormInfo, data map[string]interface{}) error {
+func (h *Handler) saveToDatabase(fi FormInfo, data map[string]interface{}) (int64, error) {
 	tableName := fi.Model.TableName
 	if tableName == "" {
 		tableName = "form_" + fi.Name
@@ -1078,7 +1316,7 @@ func (h *Handler) saveToDatabase(fi FormInfo, data map[string]interface{}) error
 		}
 
 		if err := h.db.CreateTable(tableName, fields); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
@@ -1098,8 +1336,8 @@ func (h *Handler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
-	if len(req.Username) < 3 || len(req.Username) > 32 {
-		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "用户名长度需为 3-32"})
+	if len(req.Username) == 0 || len(req.Username) > 32 {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "用户名不能为空且不超过 32 字符"})
 		return
 	}
 	if len(req.Password) < 6 {
@@ -1118,7 +1356,7 @@ func (h *Handler) RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	passwordHash := hashPassword(req.Password)
-	uid, err := h.db.CreateUser(req.Username, passwordHash, "user")
+	uid, err := h.db.CreateUser(req.Username, passwordHash, "user", "")
 	if err != nil {
 		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "创建用户失败"})
 		return
@@ -1475,7 +1713,7 @@ func (h *Handler) UpdateUserRoleHandler(w http.ResponseWriter, r *http.Request) 
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "请求格式错误"})
 		return
 	}
-	if req.Role != "admin" && req.Role != "user" {
+	if !isValidRole(req.Role) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "角色非法"})
 		return
 	}
@@ -1516,11 +1754,15 @@ func (h *Handler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]map[string]interface{}, 0, len(users))
 	for _, u := range users {
+		managedIDs, _ := h.db.GetLeaderDepartments(u.ID)
 		result = append(result, map[string]interface{}{
-			"id":        u.ID,
-			"username":  u.Username,
-			"role":      u.Role,
-			"createdAt": u.CreatedAt,
+			"id":                   u.ID,
+			"username":             u.Username,
+			"role":                 u.Role,
+			"department":           u.Department,
+			"managedDepartmentIds": managedIDs,
+			"managedDepartments":   h.managedDepartmentNames(u.ID),
+			"createdAt":            u.CreatedAt,
 		})
 	}
 
@@ -1533,9 +1775,10 @@ func (h *Handler) ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 // CreateUserByAdminHandler 管理员新增用户
 func (h *Handler) CreateUserByAdminHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		Role       string `json:"role"`
+		Department string `json:"department"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1546,6 +1789,7 @@ func (h *Handler) CreateUserByAdminHandler(w http.ResponseWriter, r *http.Reques
 	username := strings.TrimSpace(req.Username)
 	password := strings.TrimSpace(req.Password)
 	role := strings.TrimSpace(req.Role)
+	department := strings.TrimSpace(req.Department)
 	if role == "" {
 		role = "user"
 	}
@@ -1554,15 +1798,11 @@ func (h *Handler) CreateUserByAdminHandler(w http.ResponseWriter, r *http.Reques
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "用户名不能为空"})
 		return
 	}
-	if len(username) < 3 {
-		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "用户名至少 3 位"})
-		return
-	}
 	if len(password) < 6 {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "密码至少 6 位"})
 		return
 	}
-	if role != "admin" && role != "user" {
+	if !isValidRole(role) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "角色非法"})
 		return
 	}
@@ -1577,18 +1817,40 @@ func (h *Handler) CreateUserByAdminHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	uid, err := h.db.CreateUser(username, hashPassword(password), role)
+	uid, err := h.db.CreateUser(username, hashPassword(password), role, department)
 	if err != nil {
 		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "新增用户失败"})
 		return
 	}
 
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
-		"status":   "success",
-		"userId":   uid,
-		"username": username,
-		"role":     role,
+		"status":     "success",
+		"userId":     uid,
+		"username":   username,
+		"role":       role,
+		"department": department,
 	})
+}
+
+// UpdateUserDepartmentHandler 管理员修改用户部门。
+func (h *Handler) UpdateUserDepartmentHandler(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID     int    `json:"userId"`
+		Department string `json:"department"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "请求格式错误"})
+		return
+	}
+	if req.UserID <= 0 {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "用户ID非法"})
+		return
+	}
+	if err := h.db.UpdateUserDepartment(req.UserID, strings.TrimSpace(req.Department)); err != nil {
+		jsonResponse(w, http.StatusInternalServerError, map[string]string{"error": "更新部门失败"})
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]string{"status": "success"})
 }
 
 // DeleteUserByAdminHandler 管理员删除用户
@@ -1639,9 +1901,10 @@ func (h *Handler) DeleteUserByAdminHandler(w http.ResponseWriter, r *http.Reques
 func (h *Handler) ImportUsersHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Users []struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-			Role     string `json:"role"`
+			Username   string `json:"username"`
+			Password   string `json:"password"`
+			Role       string `json:"role"`
+			Department string `json:"department"`
 		} `json:"users"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1660,19 +1923,20 @@ func (h *Handler) ImportUsersHandler(w http.ResponseWriter, r *http.Request) {
 		username := strings.TrimSpace(u.Username)
 		password := strings.TrimSpace(u.Password)
 		role := strings.TrimSpace(u.Role)
+		department := strings.TrimSpace(u.Department)
 		if role == "" {
 			role = "user"
 		}
-		if len(username) < 3 {
-			failed = append(failed, FailItem{username, "用户名至少3位"})
+		if username == "" {
+			failed = append(failed, FailItem{username, "用户名为空"})
 			continue
 		}
 		if len(password) < 6 {
 			failed = append(failed, FailItem{username, "密码至少6位"})
 			continue
 		}
-		if role != "admin" && role != "user" {
-			failed = append(failed, FailItem{username, "角色须为 user 或 admin"})
+		if !isValidRole(role) {
+			failed = append(failed, FailItem{username, "角色不合法"})
 			continue
 		}
 		existing, err := h.db.GetUserByUsername(username)
@@ -1684,7 +1948,7 @@ func (h *Handler) ImportUsersHandler(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, FailItem{username, "用户名已存在"})
 			continue
 		}
-		if _, err = h.db.CreateUser(username, hashPassword(password), role); err != nil {
+		if _, err = h.db.CreateUser(username, hashPassword(password), role, department); err != nil {
 			failed = append(failed, FailItem{username, "创建失败"})
 			continue
 		}
