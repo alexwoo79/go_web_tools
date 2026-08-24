@@ -564,7 +564,7 @@ function exportFailedImportCsv() {
       <div class="header-right">
         <span v-if="auth.user" class="user-badge">{{ auth.user.username }}</span>
         <button class="btn-logout" @click="logout">退出登录</button>
-        <a href="/admin" @click.prevent="router.push('/admin')" class="link">返回管理后台</a>
+        <a href="/portal" @click.prevent="router.push('/portal')" class="link">返回主页</a>
       </div>
     </header>
 

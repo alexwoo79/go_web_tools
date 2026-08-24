@@ -23,7 +23,6 @@ async function logout() {
       <div class="hub-user">
         <span>{{ auth.user?.username }}</span>
         <span class="role">{{ roleText }}</span>
-        <button class="link-btn" @click="router.push('/change-password')">修改密码</button>
         <button class="link-btn" @click="logout">退出</button>
       </div>
     </header>
@@ -42,7 +41,7 @@ async function logout() {
       </button>
 
       <button v-if="isAdmin" class="entry-card" @click="router.push('/admin')">
-        <h2>表单后台管理</h2>
+        <h2>表单后台</h2>
         <p>管理表单配置、查看数据并维护后台设置。</p>
         <span>进入 →</span>
       </button>

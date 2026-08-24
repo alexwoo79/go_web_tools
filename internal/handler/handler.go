@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -1564,18 +1565,31 @@ func (h *Handler) ExportCSVHandler(w http.ResponseWriter, r *http.Request) {
 	// 导出 CSV
 	outputPath := fmt.Sprintf("data/%s_%s.csv", fi.Name, time.Now().Format("20060102_150405"))
 
-	// 转换字段类型
-	modelsFields := make([]models.FieldInfo, len(fi.Fields))
-	for i, f := range fi.Fields {
-		modelsFields[i] = convertToModelsField(f)
+	// 含 repeated_group 的表单：按表格行展开为“长表”导出
+	hasGroup := false
+	for _, f := range fi.Fields {
+		if f.Type == "repeated_group" {
+			hasGroup = true
+			break
+		}
 	}
 
-	if err := h.db.ExportToCSV(tableName, modelsFields, outputPath); err != nil {
+	var exportErr error
+	if hasGroup {
+		exportErr = h.exportRepeatedGroupCSV(tableName, fi, outputPath)
+	} else {
+		modelsFields := make([]models.FieldInfo, len(fi.Fields))
+		for i, f := range fi.Fields {
+			modelsFields[i] = convertToModelsField(f)
+		}
+		exportErr = h.db.ExportToCSV(tableName, modelsFields, outputPath)
+	}
+	if exportErr != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "error",
-			"message": err.Error(),
+			"message": exportErr.Error(),
 		})
 		return
 	}
@@ -1597,6 +1611,134 @@ func (h *Handler) ExportCSVHandler(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	io.Copy(w, file)
+}
+
+// exportRepeatedGroupCSV 将含 repeated_group 的表单导出为“长表”：
+// 每条提交的每个表格行展开为一行，并带「表格」列标识来源（如 重点/日常）。
+func (h *Handler) exportRepeatedGroupCSV(tableName string, fi FormInfo, outputPath string) error {
+	rows, err := h.db.Query(tableName, "1=1")
+	if err != nil {
+		return fmt.Errorf("查询数据失败：%v", err)
+	}
+
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("创建文件失败：%v", err)
+	}
+	defer file.Close()
+	_, _ = file.WriteString("\xef\xbb\xbf") // UTF-8 BOM，Excel 正确识别中文
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	var scalarFields []FieldInfo
+	var groups []FieldInfo
+	for _, f := range fi.Fields {
+		if f.Type == "repeated_group" {
+			groups = append(groups, f)
+		} else {
+			scalarFields = append(scalarFields, f)
+		}
+	}
+	groupFields := orderedGroupFields(groups)
+
+	headers := []string{"提交ID"}
+	for _, f := range scalarFields {
+		headers = append(headers, f.Label)
+	}
+	headers = append(headers, "表格")
+	for _, gf := range groupFields {
+		headers = append(headers, gf.Label)
+	}
+	headers = append(headers, "提交时间", "IP 地址")
+	if err := writer.Write(headers); err != nil {
+		return fmt.Errorf("写入表头失败：%v", err)
+	}
+
+	for _, row := range rows {
+		id := fmt.Sprint(row["id"])
+		submittedAt := fmt.Sprint(row["_submitted_at"])
+		ip := fmt.Sprint(row["_ip"])
+
+		data := map[string]interface{}{}
+		if raw, ok := row["data"].(string); ok && raw != "" {
+			_ = json.Unmarshal([]byte(raw), &data)
+		}
+
+		expanded := false
+		for _, g := range groups {
+			for _, item := range normalizePayloadArray(data[g.Name]) {
+				m, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				line := []string{id}
+				for _, f := range scalarFields {
+					line = append(line, cellString(data[f.Name], row[f.Name]))
+				}
+				line = append(line, g.Label)
+				for _, gf := range groupFields {
+					line = append(line, cellString(m[gf.Name], nil))
+				}
+				line = append(line, submittedAt, ip)
+				if err := writer.Write(line); err != nil {
+					return fmt.Errorf("写入数据行失败：%v", err)
+				}
+				expanded = true
+			}
+		}
+		// 没有任何表格行时，仍输出一行标量数据
+		if !expanded {
+			line := []string{id}
+			for _, f := range scalarFields {
+				line = append(line, cellString(data[f.Name], row[f.Name]))
+			}
+			line = append(line, "")
+			for range groupFields {
+				line = append(line, "")
+			}
+			line = append(line, submittedAt, ip)
+			if err := writer.Write(line); err != nil {
+				return fmt.Errorf("写入数据行失败：%v", err)
+			}
+		}
+	}
+	return writer.Error()
+}
+
+// orderedGroupFields 按出现顺序取所有 repeated_group 组字段的并集。
+func orderedGroupFields(groups []FieldInfo) []FieldInfo {
+	var out []FieldInfo
+	seen := map[string]bool{}
+	for _, g := range groups {
+		for _, gf := range g.GroupFields {
+			if !seen[gf.Name] {
+				seen[gf.Name] = true
+				out = append(out, gf)
+			}
+		}
+	}
+	return out
+}
+
+// cellString 将单元格值转为 CSV 字符串（nil → 空串）。
+func cellString(v interface{}, fallback interface{}) string {
+	if v == nil {
+		v = fallback
+	}
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		if t == float64(int64(t)) {
+			return strconv.FormatInt(int64(t), 10)
+		}
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	default:
+		return fmt.Sprint(v)
+	}
 }
 
 // ViewDataHandler 查看表单数据（JSON 格式）

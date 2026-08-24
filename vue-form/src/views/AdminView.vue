@@ -441,12 +441,11 @@ async function deleteForm(form: FormStat) {
 <template>
   <div class="page">
     <header class="site-header">
-      <h1>管理后台</h1>
+      <h1>表单后台</h1>
       <div class="header-right">
         <span v-if="user" class="user-badge">{{ user.Username }}</span>
-        <a href="/admin/users" @click.prevent="router.push('/admin/users')" class="link">用户管理</a>
         <button class="btn-logout" @click="logout">退出登录</button>
-        <a href="/" @click.prevent="router.push('/')" class="link">← 前台首页</a>
+        <a href="/portal" @click.prevent="router.push('/portal')" class="link">返回主页</a>
       </div>
     </header>
 

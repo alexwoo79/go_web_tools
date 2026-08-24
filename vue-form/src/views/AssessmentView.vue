@@ -267,7 +267,7 @@ onMounted(() => {
 <template>
   <div class="page">
     <header class="site-header">
-      <a href="/" @click.prevent="router.push('/')">← 返回首页</a>
+      <a href="/portal" @click.prevent="router.push('/portal')">← 返回主页</a>
       <span v-if="auth.user" class="user-badge">{{ auth.user.username }}（{{ roleLabel(auth.user.role) }}）</span>
     </header>
 

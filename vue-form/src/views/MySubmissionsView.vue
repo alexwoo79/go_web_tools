@@ -73,8 +73,7 @@ onMounted(async () => {
     <header class="site-header">
       <h1>我的提交</h1>
       <nav>
-        <a href="/change-password" @click.prevent="router.push('/change-password')">修改密码</a>
-        <a href="/" @click.prevent="router.push('/')">返回首页</a>
+        <a href="/portal" @click.prevent="router.push('/portal')">返回主页</a>
       </nav>
     </header>
 

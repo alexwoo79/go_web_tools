@@ -119,8 +119,7 @@ function isExpiringToday(raw?: string): boolean {
     <header class="site-header">
       <h1>表单中心</h1>
       <nav>
-        <a v-if="auth.user" href="/change-password" @click.prevent="router.push('/change-password')">修改密码</a>
-        <a v-if="auth.user?.role === 'admin'" href="/admin" @click.prevent="router.push('/admin')">管理后台</a>
+        <a v-if="auth.user?.role === 'admin'" href="/admin" @click.prevent="router.push('/admin')">表单后台</a>
         <a v-if="auth.user" href="/my-submissions" @click.prevent="router.push('/my-submissions')">我的提交</a>
         <a v-if="!auth.user" href="/login" @click.prevent="router.push('/login')">登录</a>
         <a v-if="!auth.user" href="/register" @click.prevent="router.push('/register')">注册</a>

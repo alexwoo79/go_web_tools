@@ -5,7 +5,6 @@ import AdminView from '../views/AdminView.vue'
 import FormView from '../views/FormView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import MySubmissionsView from '../views/MySubmissionsView.vue'
-import ChangePasswordView from '../views/ChangePasswordView.vue'
 import UserManagementView from '../views/UserManagementView.vue'
 import NavigationHubView from '../views/NavigationHubView.vue'
 import AssessmentView from '../views/AssessmentView.vue'
@@ -22,7 +21,7 @@ const router = createRouter({
       path: '/admin',
       name: 'admin',
       component: AdminView,
-      meta: { requiresAuth: true, requiresAdmin: true, title: '管理后台' },
+      meta: { requiresAuth: true, requiresAdmin: true, title: '表单后台' },
     },
     {
       path: '/admin/users',
@@ -41,12 +40,6 @@ const router = createRouter({
       name: 'assessment',
       component: AssessmentView,
       meta: { requiresAuth: true, title: '绩效考核' },
-    },
-    {
-      path: '/change-password',
-      name: 'change-password',
-      component: ChangePasswordView,
-      meta: { requiresAuth: true, title: '修改密码' },
     },
     {
       path: '/forms/:formName',
