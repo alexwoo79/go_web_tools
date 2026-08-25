@@ -26,6 +26,7 @@ interface FormDef {
   Description: string
   Fields: Field[]
   WeightSumTotalLimit?: number | null
+  SubmissionStatus?: string
   CurrentUser?: {
     username: string
     role: string
@@ -48,6 +49,10 @@ const runningDistanceError = ref('')
 // 含 repeated_group 表格的表单需要更宽容器，让表格完整展示
 const hasRepeatedGroup = computed(() =>
   (formDef.value?.Fields ?? []).some((f) => f.Type === 'repeated_group'),
+)
+
+const submissionLocked = computed(() =>
+  ['scored', 'approved', 'finalized'].includes(formDef.value?.SubmissionStatus ?? ''),
 )
 
 function isShareMode(): boolean {
@@ -219,6 +224,17 @@ async function submit() {
     submitError.value = weightError
     return
   }
+  const status = formDef.value?.SubmissionStatus
+  if (submissionLocked.value) {
+    submitError.value = '该考核已进行评分/审核，无法重新提交'
+    return
+  }
+  const msg = status === 'submitted'
+    ? '您已提交过该表单，再次提交将覆盖上一次（仅保留最后一次），确认覆盖吗？'
+    : '确认提交该表单吗？提交后将无法修改。'
+  if (!window.confirm(msg)) {
+    return
+  }
   submitting.value = true
   try {
     const res = await fetch(getSubmitPath(), {
@@ -266,6 +282,12 @@ function createGroupRow(field: Field): Record<string, any> {
 function groupRows(field: Field): Record<string, any>[] {
   const rows = formData.value[field.Name]
   return Array.isArray(rows) ? rows : []
+}
+
+function rgColClass(gf: Field): string {
+  if (gf.Type === 'number' || gf.Type === 'range' || gf.Type === 'date' || gf.Type === 'time') return 'rg-num'
+  if (gf.Type === 'textarea') return 'rg-textarea'
+  return ''
 }
 
 function addGroupRow(field: Field) {
@@ -411,6 +433,12 @@ function getRangeTicks(field: Field): number[] {
       <div v-else-if="formDef" class="form-card">
         <h1>{{ formDef.Title }}</h1>
         <p v-if="formDef.Description" class="desc">{{ formDef.Description }}</p>
+        <div v-if="formDef.SubmissionStatus === 'submitted'" class="submit-banner info">
+          您已提交过该表单。再次提交将覆盖上一次提交，仅保留最后一次。
+        </div>
+        <div v-else-if="submissionLocked" class="submit-banner warn">
+          该考核已进行评分 / 审核，无法重新提交。
+        </div>
 
         <form @submit.prevent="submit">
           <div
@@ -507,7 +535,7 @@ function getRangeTicks(field: Field): number[] {
                 <table class="rg-table">
                   <thead>
                     <tr>
-                      <th v-for="gf in field.GroupFields" :key="gf.Name">
+                      <th v-for="gf in field.GroupFields" :key="gf.Name" :class="rgColClass(gf)">
                         {{ gf.Label }}<span v-if="gf.Required" class="required">*</span>
                       </th>
                       <th class="rg-op-col">操作</th>
@@ -515,7 +543,7 @@ function getRangeTicks(field: Field): number[] {
                   </thead>
                   <tbody>
                     <tr v-for="(row, ri) in groupRows(field)" :key="ri">
-                      <td v-for="gf in field.GroupFields" :key="gf.Name">
+                      <td v-for="gf in field.GroupFields" :key="gf.Name" :class="rgColClass(gf)">
                         <textarea
                           v-if="gf.Type === 'textarea'"
                           v-model="row[gf.Name]"
@@ -594,8 +622,8 @@ function getRangeTicks(field: Field): number[] {
           <p v-if="submitError" class="error-msg">{{ submitError }}</p>
 
           <div class="actions">
-            <button type="submit" :disabled="submitting" class="btn-submit">
-              {{ submitting ? '提交中…' : '提交' }}
+            <button type="submit" :disabled="submitting || submissionLocked" class="btn-submit">
+              {{ submitting ? '提交中…' : (submissionLocked ? '已锁定' : '提交') }}
             </button>
           </div>
         </form>
@@ -651,6 +679,15 @@ function getRangeTicks(field: Field): number[] {
 }
 .form-card h1 { margin: 0 0 .4rem; font-size: 1.5rem; color: #1a1a2e; }
 .desc { color: #666; margin: 0 0 1.8rem; font-size: .9rem; }
+.submit-banner {
+  padding: .6rem .8rem;
+  border-radius: 8px;
+  font-size: .84rem;
+  margin: -0.6rem 0 1.2rem;
+  line-height: 1.5;
+}
+.submit-banner.info { background: #fef3c7; border: 1px solid #fde68a; color: #92400e; }
+.submit-banner.warn { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
 
 .field { margin-bottom: 1.2rem; }
 .field > label { display: block; font-size: .88rem; font-weight: 500; color: #333; margin-bottom: .45rem; }
@@ -825,21 +862,23 @@ input:focus, select:focus, textarea:focus {
 
 .rg-table-wrap {
   overflow-x: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
+  border: 1px solid #dbe3f0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(77, 95, 164, .07);
 }
 
 .rg-table {
   width: 100%;
-  min-width: 720px;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: .82rem;
 }
 
 .rg-table th,
 .rg-table td {
-  border-bottom: 1px solid #edf2f7;
-  border-right: 1px solid #edf2f7;
+  border-bottom: 1px solid #edf1f8;
+  border-right: 1px solid #edf1f8;
   padding: 0;
   text-align: left;
   vertical-align: top;
@@ -849,13 +888,22 @@ input:focus, select:focus, textarea:focus {
 .rg-table td:last-child { border-right: none; }
 
 .rg-table thead th {
-  background: #f8fafc;
-  color: #334155;
+  background: #f3f6fd;
+  color: #2f3b5b;
   font-weight: 600;
   white-space: nowrap;
+  padding: .5rem .6rem;
+  letter-spacing: .01em;
+  text-align: center;
+  vertical-align: middle;
 }
 
+.rg-table tbody tr:nth-child(even) { background: #fbfcfe; }
+.rg-table tbody tr:hover { background: #f3f7ff; }
 .rg-table tbody tr:last-child td { border-bottom: none; }
+
+.rg-table td.rg-num { text-align: center; }
+.rg-table td.rg-textarea { vertical-align: top; }
 
 .rg-table input,
 .rg-table select,
@@ -871,16 +919,18 @@ input:focus, select:focus, textarea:focus {
   box-shadow: none !important;
   outline: none !important;
   min-height: 30px !important;
-  line-height: 1.35 !important;
+  line-height: 1.4 !important;
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
 }
 
-.rg-table textarea { resize: vertical; }
+.rg-table td.rg-num input { text-align: center; }
+.rg-table textarea { resize: none; min-height: 36px; }
 
 .rg-table td:focus-within {
   background: #eef4ff;
+  box-shadow: inset 3px 0 0 rgba(34, 80, 187, .22);
 }
 
 .rg-table input[type="number"]::-webkit-inner-spin-button,
@@ -894,40 +944,58 @@ input:focus, select:focus, textarea:focus {
   flex-wrap: wrap;
   gap: .25rem .6rem;
   align-items: center;
+  padding: .45rem .55rem;
 }
 
-.rg-op-col {
-  width: 58px;
+.rg-table td.rg-op-col {
+  width: 84px;
   text-align: center;
+  padding: .4rem .4rem;
+  vertical-align: middle;
 }
 
 .rg-btn-remove {
-  padding: .3rem .55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .2rem;
+  padding: .18rem .55rem;
   border: 1px solid #fecaca;
-  border-radius: 6px;
+  border-radius: 999px;
   background: #fff;
   color: #dc2626;
-  font-size: .78rem;
+  font-size: .76rem;
   cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
 }
+
+.rg-btn-remove:hover { background: #fef2f2; }
+.rg-btn-remove::before { content: '✕'; font-size: .68rem; line-height: 1; }
 
 .rg-actions { margin-top: .55rem; }
 
 .rg-btn-add {
-  padding: .42rem .85rem;
-  border: 1px dashed #93aee8;
-  border-radius: 8px;
-  background: #fff;
+  width: 100%;
+  padding: .5rem;
+  border: 1px dashed #b9c7e8;
+  border-radius: 10px;
+  background: #fbfcff;
   color: #2250bb;
-  font-size: .82rem;
+  font-size: .84rem;
   font-weight: 600;
   cursor: pointer;
+  transition: background .15s, border-color .15s;
 }
 
+.rg-btn-add:hover { background: #f0f4ff; border-color: #93aee8; }
 .rg-btn-add:disabled { opacity: .5; cursor: not-allowed; }
 
 .rg-weight-sum {
-  margin-top: .45rem;
+  margin-top: .5rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: .35rem;
   font-size: .8rem;
   color: #475569;
 }

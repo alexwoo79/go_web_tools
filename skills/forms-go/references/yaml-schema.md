@@ -109,6 +109,28 @@ forms:
 `weight_sum_limit` 是每个 repeated_group 的权重上限（单个表格可设为 1）；
 表单级 `weight_sum_total_limit` 约束所有表格权重合计（如两个表格合计 ≤ 1），前后端都会校验。
 
+## 表单评分声明（可选）
+
+表单可用 `scoring:` 块向考核模块声明“本表单如何被评分”。评分引擎只读此配置，改表单不用改评分代码。
+
+```yaml
+forms:
+  - name: example_table
+    scoring:
+      mode: "single"                    # single=每个评分人打一个总分；item_avg/item_weighted=预留（按项打分）
+      group: "key_tasks"                # 评分项所在的 repeated_group（item 模式时使用）
+      score_field: "de_fen"             # 每项得分字段名
+      weight_field: "dan_xiang_quan_zhong"  # 每项权重字段名
+```
+
+评分模式说明：
+- `single`：每个评分人对一条记录打一个总分（0-100）。
+- `item_avg`：评分人对每个评分项（`score_field` 所在的 repeated_group 每行）打 0-100 分，汇总为简单平均。
+- `item_weighted`：同上，但按 `weight_field` 加权汇总；无有效权重时回退简单平均。
+- `group` 留空表示对所有含 `score_field` 的 repeated_group 逐项打分；填写则只用该组。
+
+评分人列表（`reviewers: [{role, weight}]`，有序可增删）由考核定义在管理后台配置。
+
 ## 排序与可见性规则（内置）
 
 1. `pinned=true` 置顶

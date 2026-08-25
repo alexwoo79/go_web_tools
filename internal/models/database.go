@@ -25,11 +25,14 @@ type UserRecord struct {
 }
 
 type AssessmentPeriod struct {
-	ID        int64
-	Name      string
-	FormName  string
-	Status    string
-	CreatedAt string
+	ID               int64
+	Name             string
+	FormName         string
+	Status           string
+	CreatedAt        string
+	ParticipantRoles string // 逗号分隔的参与角色，空=全员(非管理员)
+	ReviewChain      string // JSON: {scored,approved,finalized} 角色，空=默认
+	GradeConfig      string // JSON: {enabled,group_by,rules} 等级分布配置，空=未启用
 }
 
 type AssessmentRecord struct {
@@ -42,6 +45,7 @@ type AssessmentRecord struct {
 	TableName  string
 	RowID      int64
 	Status     string
+	Scores     string // JSON: {scored:{role,username,score,weight}, approved:..., finalized:...}
 	TotalScore *float64
 	ReviewedBy string
 	UpdatedAt  string
@@ -84,16 +88,35 @@ func (d *Database) Close() error {
 
 // ---- 考核模块 ----
 
-func (d *Database) CreateAssessmentPeriod(name, formName string) (int64, error) {
-	res, err := d.db.Exec(`INSERT INTO assessment_periods (name, form_name) VALUES (?, ?)`, name, formName)
+func (d *Database) CreateAssessmentPeriod(name, formName, participantRoles, reviewChain, gradeConfig string) (int64, error) {
+	res, err := d.db.Exec(
+		`INSERT INTO assessment_periods (name, form_name, participant_roles, review_chain, grade_config) VALUES (?, ?, ?, ?, ?)`,
+		name, formName, participantRoles, reviewChain, gradeConfig,
+	)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
+func (d *Database) UpdateAssessmentPeriod(id int64, name, formName, participantRoles, reviewChain, gradeConfig string) error {
+	_, err := d.db.Exec(
+		`UPDATE assessment_periods SET name = ?, form_name = ?, participant_roles = ?, review_chain = ?, grade_config = ? WHERE id = ?`,
+		name, formName, participantRoles, reviewChain, gradeConfig, id,
+	)
+	return err
+}
+
+func (d *Database) DeleteAssessmentPeriod(id int64) error {
+	if _, err := d.db.Exec(`DELETE FROM assessment_records WHERE period_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := d.db.Exec(`DELETE FROM assessment_periods WHERE id = ?`, id)
+	return err
+}
+
 func (d *Database) ListAssessmentPeriods() ([]AssessmentPeriod, error) {
-	rows, err := d.db.Query(`SELECT id, name, form_name, status, created_at FROM assessment_periods ORDER BY id DESC`)
+	rows, err := d.db.Query(`SELECT id, name, form_name, status, created_at, participant_roles, review_chain, grade_config FROM assessment_periods ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +124,7 @@ func (d *Database) ListAssessmentPeriods() ([]AssessmentPeriod, error) {
 	out := make([]AssessmentPeriod, 0)
 	for rows.Next() {
 		var p AssessmentPeriod
-		if err := rows.Scan(&p.ID, &p.Name, &p.FormName, &p.Status, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.FormName, &p.Status, &p.CreatedAt, &p.ParticipantRoles, &p.ReviewChain, &p.GradeConfig); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -112,8 +135,23 @@ func (d *Database) ListAssessmentPeriods() ([]AssessmentPeriod, error) {
 func (d *Database) GetActiveAssessmentPeriod() (*AssessmentPeriod, error) {
 	var p AssessmentPeriod
 	err := d.db.QueryRow(
-		`SELECT id, name, form_name, status, created_at FROM assessment_periods WHERE status='active' ORDER BY id DESC LIMIT 1`,
-	).Scan(&p.ID, &p.Name, &p.FormName, &p.Status, &p.CreatedAt)
+		`SELECT id, name, form_name, status, created_at, participant_roles, review_chain, grade_config FROM assessment_periods WHERE status='active' ORDER BY id DESC LIMIT 1`,
+	).Scan(&p.ID, &p.Name, &p.FormName, &p.Status, &p.CreatedAt, &p.ParticipantRoles, &p.ReviewChain, &p.GradeConfig)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (d *Database) GetAssessmentPeriodByID(id int64) (*AssessmentPeriod, error) {
+	var p AssessmentPeriod
+	err := d.db.QueryRow(
+		`SELECT id, name, form_name, status, created_at, participant_roles, review_chain, grade_config FROM assessment_periods WHERE id = ? LIMIT 1`,
+		id,
+	).Scan(&p.ID, &p.Name, &p.FormName, &p.Status, &p.CreatedAt, &p.ParticipantRoles, &p.ReviewChain, &p.GradeConfig)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -138,10 +176,10 @@ func (d *Database) CreateAssessmentRecord(rec AssessmentRecord) (int64, error) {
 func (d *Database) GetAssessmentRecordByUser(periodID int64, userID int, formName string) (*AssessmentRecord, error) {
 	var r AssessmentRecord
 	err := d.db.QueryRow(
-		`SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, total_score, reviewed_by, updated_at
+		`SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, scores, total_score, reviewed_by, updated_at
 		 FROM assessment_records WHERE period_id=? AND user_id=? AND form_name=? LIMIT 1`,
 		periodID, userID, formName,
-	).Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt)
+	).Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.Scores, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -159,13 +197,18 @@ func (d *Database) UpdateAssessmentRecordRow(recordID, rowID int64) error {
 	return err
 }
 
+func (d *Database) DeleteRow(tableName string, rowID int64) error {
+	_, err := d.db.Exec(fmt.Sprintf("DELETE FROM `%s` WHERE id = ?", tableName), rowID)
+	return err
+}
+
 func (d *Database) GetAssessmentRecordByID(id int64) (*AssessmentRecord, error) {
 	var r AssessmentRecord
 	err := d.db.QueryRow(
-		`SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, total_score, reviewed_by, updated_at
+		`SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, scores, total_score, reviewed_by, updated_at
 		 FROM assessment_records WHERE id=? LIMIT 1`,
 		id,
-	).Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt)
+	).Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.Scores, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +217,7 @@ func (d *Database) GetAssessmentRecordByID(id int64) (*AssessmentRecord, error) 
 
 // ListAssessmentRecords 列出考核记录；status/department 为空表示不限。
 func (d *Database) ListAssessmentRecords(periodID int64, status, department string) ([]AssessmentRecord, error) {
-	query := `SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, total_score, reviewed_by, updated_at
+	query := `SELECT id, period_id, user_id, username, department, form_name, table_name, row_id, status, scores, total_score, reviewed_by, updated_at
 		FROM assessment_records WHERE 1=1`
 	args := make([]interface{}, 0)
 	if periodID > 0 {
@@ -198,7 +241,7 @@ func (d *Database) ListAssessmentRecords(periodID int64, status, department stri
 	out := make([]AssessmentRecord, 0)
 	for rows.Next() {
 		var r AssessmentRecord
-		if err := rows.Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.PeriodID, &r.UserID, &r.Username, &r.Department, &r.FormName, &r.TableName, &r.RowID, &r.Status, &r.Scores, &r.TotalScore, &r.ReviewedBy, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)
@@ -210,6 +253,24 @@ func (d *Database) UpdateAssessmentRecordStatus(id int64, status, reviewedBy str
 	_, err := d.db.Exec(
 		`UPDATE assessment_records SET status=?, reviewed_by=?, total_score=?, updated_at=datetime('now') WHERE id=?`,
 		status, reviewedBy, totalScore, id,
+	)
+	return err
+}
+
+// ResetAssessmentRecordStatus 管理员将记录恢复为“已填报”，允许员工重新提交。
+func (d *Database) ResetAssessmentRecordStatus(id int64) error {
+	_, err := d.db.Exec(
+		`UPDATE assessment_records SET status='submitted', reviewed_by='', scores='', total_score=NULL, updated_at=datetime('now') WHERE id=?`,
+		id,
+	)
+	return err
+}
+
+// SetAssessmentRecordResult 写入某阶段的评分结果并推进状态。
+func (d *Database) SetAssessmentRecordResult(id int64, status, reviewedBy, scoresJSON string, total *float64) error {
+	_, err := d.db.Exec(
+		`UPDATE assessment_records SET status=?, reviewed_by=?, scores=?, total_score=?, updated_at=datetime('now') WHERE id=?`,
+		status, reviewedBy, scoresJSON, total, id,
 	)
 	return err
 }
@@ -520,7 +581,28 @@ func (d *Database) EnsureAssessmentTables() error {
 		UNIQUE(period_id, user_id, form_name)
 	)`
 	_, err := d.db.Exec(records)
-	return err
+	if err != nil {
+		return err
+	}
+	// 老库迁移：补充参与角色/评分链列
+	addCols := []struct{ name, ddl string }{
+		{"participant_roles", `ALTER TABLE assessment_periods ADD COLUMN participant_roles TEXT NOT NULL DEFAULT ''`},
+		{"review_chain", `ALTER TABLE assessment_periods ADD COLUMN review_chain TEXT NOT NULL DEFAULT ''`},
+		{"grade_config", `ALTER TABLE assessment_periods ADD COLUMN grade_config TEXT NOT NULL DEFAULT ''`},
+		{"scores", `ALTER TABLE assessment_records ADD COLUMN scores TEXT NOT NULL DEFAULT ''`},
+	}
+	for _, c := range addCols {
+		table := "assessment_periods"
+		if c.name == "scores" {
+			table = "assessment_records"
+		}
+		if !d.columnExists(table, c.name) {
+			if _, err := d.db.Exec(c.ddl); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // EnsureDepartmentTables 创建部门表与领导管理范围关联表，并把现有用户的部门文本回填为部门记录。

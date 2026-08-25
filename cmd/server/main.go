@@ -128,6 +128,7 @@ func main() {
 			Model:               struct{ TableName string }{TableName: tableName},
 			Fields:              fields,
 			WeightSumTotalLimit: fc.WeightSumTotalLimit,
+			Scoring:             config.ToScoringInfo(fc.Scoring),
 			FileModTime:         fc.FileModTime,
 			ConfigSource:        fc.ConfigSource,
 		})
@@ -195,6 +196,7 @@ func main() {
 				Model:               struct{ TableName string }{TableName: tn},
 				Fields:              fields,
 				WeightSumTotalLimit: fc.WeightSumTotalLimit,
+				Scoring:             config.ToScoringInfo(fc.Scoring),
 				FileModTime:         fc.FileModTime,
 				ConfigSource:        fc.ConfigSource,
 			})

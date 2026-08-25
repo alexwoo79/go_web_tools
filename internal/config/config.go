@@ -44,8 +44,20 @@ type FormConfig struct {
 	Model         *FormModel   `yaml:"model"`
 	// 表单级约束：所有 repeated_group 的权重求和不得超过该上限（如两个表格合计 ≤ 1）
 	WeightSumTotalLimit *float64 `yaml:"weight_sum_total_limit,omitempty"`
+	// 表单评分声明：自描述“本表单如何被评分”，评分引擎只读此配置，不写死字段
+	Scoring        *ScoringConfig `yaml:"scoring,omitempty"`
 	ConfigSource        string   `yaml:"-"` // 记录配置来源文件
 	FileModTime         int64    `yaml:"-"` // 记录配置文件修改时间戳
+}
+
+// ScoringConfig 表单评分声明（可选）。mode 决定评分粒度：
+//   - single（默认）：每个评分人对一条记录打一个总分，与表单结构完全解耦。
+//   - item_avg / item_weighted：预留，按 group 内每行的 ScoreField 打分，按 WeightField 加权汇总。
+type ScoringConfig struct {
+	Mode        string `yaml:"mode,omitempty"`         // single | item_avg | item_weighted
+	Group       string `yaml:"group,omitempty"`        // 评分项所在的 repeated_group
+	ScoreField  string `yaml:"score_field,omitempty"`  // 每项得分字段名
+	WeightField string `yaml:"weight_field,omitempty"` // 每项权重字段名
 }
 
 type FormField struct {
@@ -98,6 +110,19 @@ func ToFieldInfos(fields []*FormField) []handler.FieldInfo {
 		})
 	}
 	return out
+}
+
+// ToScoringInfo 将表单评分声明转换为 handler.ScoringInfo。
+func ToScoringInfo(sc *ScoringConfig) *handler.ScoringInfo {
+	if sc == nil {
+		return nil
+	}
+	return &handler.ScoringInfo{
+		Mode:        sc.Mode,
+		Group:       sc.Group,
+		ScoreField:  sc.ScoreField,
+		WeightField: sc.WeightField,
+	}
 }
 
 // Load 加载主配置文件并合并所有包含的配置

@@ -77,8 +77,21 @@ Go 程序不内置 Excel 解析。
 - 绩效考核：角色含 职员(staff)/部门负责人(dept_head)/分管领导(division_leader)/主管领导(top_leader)；
   用户表有 department 字段（从 departments 表下拉选择）；分管/主管领导通过
   `leader_departments` 表设置“管理范围”（多部门），评审按该范围过滤；考核周期在管理后台创建
-  并绑定自评表单，员工提交后自动生成考核记录，按 填报→评分→审核→确认 四层流转
+  并绑定自评表单，员工提交后自动生成考核记录，按 填报→逐级评分→确认 流转
   （`/api/assessment/*`、`/api/admin/departments`、`/api/admin/user-departments`），评审页 `/assessment`。
+  **评分人列表由管理员在考核定义里配置**（`reviewers: [{role, weight}]`，有序，可任意增删/排序，
+  默认 0.4/0.3/0.3）；每个评分人对一条记录打**一个总分（0-100）**。
+  若记录所属人角色正好是某评分人（自己评自己），自动跳过该级并按剩余评分人权重归一化汇总
+  （最终分 = Σ(得分×权重)/Σ(权重)）。评分结果存 `assessment_records.scores` JSON（key=`stage_N`），
+  不再写回表单行。记录状态为 `submitted`(已填报)/`grading`(评分中)/`finalized`(已确认)。
+  表单 YAML 可选 `scoring:` 声明块（`mode/group/score_field/weight_field`）描述评分模式，
+  评分引擎只读此配置，改表单不用改评分代码。`mode: single` 时每个评分人打一个总分；
+  `mode: item_avg`（逐项简单平均）/ `mode: item_weighted`（逐项按 `weight_field` 加权）时，
+  评分人在表单的评分项（`score_field` 所在的 repeated_group，`group` 留空=所有含该字段的表格）每行各打一个 0-100 分，
+  系统先汇总为该评分人的分，再按评分人权重得到最终分。
+  考核结果接口 `/api/assessment/results`（含等级/名次）与 `/api/assessment/results/export`（CSV）由管理端使用；
+  A/B/C/D 强制分布在考核定义 `gradeConfig`（`enabled/group_by/rules`，默认 A0.2 B0.3 C0.4 D0.1）里配置，
+  对“已确认”记录按最终得分在比较组（部门或全员）内排序后按比例分布，未确认的先不参与。
 - 数据表由 `fields` 动态生成，新增字段会自动 ALTER TABLE 加列。
 
 ## 管理后台常用 API

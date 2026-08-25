@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
 
 interface FormStat {
   Name: string
@@ -79,7 +78,6 @@ const createSaveResult = ref('')
 const deletingFormName = ref('')
 const viewportWidth = ref(9999)
 const router = useRouter()
-const auth = useAuthStore()
 
 const MOBILE_BREAKPOINT = 430
 const COMPACT_BREAKPOINT = 520
@@ -184,12 +182,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportMode)
 })
-
-async function logout() {
-  await fetch('/api/logout', { method: 'POST' })
-  auth.setUser(null)
-  router.push('/login')
-}
 
 function exportCSV(formName: string) {
   window.location.href = `/api/export/${formName}`
@@ -444,7 +436,6 @@ async function deleteForm(form: FormStat) {
       <h1>表单后台</h1>
       <div class="header-right">
         <span v-if="user" class="user-badge">{{ user.Username }}</span>
-        <button class="btn-logout" @click="logout">退出登录</button>
         <a href="/portal" @click.prevent="router.push('/portal')" class="link">返回主页</a>
       </div>
     </header>

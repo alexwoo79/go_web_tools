@@ -33,6 +33,9 @@ const users = ref<UserItem[]>([])
 const departments = ref<DeptItem[]>([])
 const newDept = ref('')
 const deptSaving = ref(false)
+const searchKey = ref('')
+const filterRole = ref('all')
+const filterDept = ref('all')
 const loading = ref(true)
 const error = ref('')
 const success = ref('')
@@ -57,6 +60,7 @@ interface ImportRow {
   password: string
   role: string
   department: string
+  managedDepartments: string
   _error: string
 }
 interface ImportFailedItem {
@@ -66,6 +70,25 @@ interface ImportFailedItem {
 const importFileInput = ref<HTMLInputElement | null>(null)
 const importRows = ref<ImportRow[]>([])
 const importPreviewing = ref(false)
+
+const filteredUsers = computed(() => {
+  const k = searchKey.value.trim()
+  return users.value.filter((u) => {
+    if (filterRole.value !== 'all' && u.role !== filterRole.value) return false
+    if (filterDept.value !== 'all' && (u.department ?? '') !== filterDept.value) return false
+    if (k && !u.username.includes(k) && !(u.department ?? '').includes(k)) return false
+    return true
+  })
+})
+
+const deptCount = computed(() => {
+  const map: Record<string, number> = {}
+  for (const u of users.value) {
+    const d = u.department || '未设置'
+    map[d] = (map[d] ?? 0) + 1
+  }
+  return map
+})
 const importing = ref(false)
 const importResult = ref<{ total: number; success: number; failed: ImportFailedItem[] } | null>(null)
 
@@ -99,12 +122,6 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateViewportMode)
 })
-
-async function logout() {
-  await fetch('/api/logout', { method: 'POST' })
-  auth.setUser(null)
-  router.push('/login')
-}
 
 async function loadUsers() {
   loading.value = true
@@ -432,13 +449,14 @@ function validateImportRow(row: unknown[]): ImportRow {
   const password = String(row[1] ?? '').trim()
   const rawRole = String(row[2] ?? '').trim().toLowerCase()
   const department = String(row[3] ?? '').trim()
+  const managedDepartments = String(row[4] ?? '').trim()
   const role = rawRole || 'user'
   let _error = ''
   if (!username) _error = '用户名为空'
   else if (!password) _error = '密码为空'
   else if (password.length < 6) _error = '密码至少6位'
   else if (!VALID_ROLES.has(role)) _error = `角色不合法（${ROLE_OPTIONS.map((o) => o.value).join('/')}）`
-  return { username, password, role, department, _error }
+  return { username, password, role, department, managedDepartments, _error }
 }
 
 async function handleImportFile(event: Event) {
@@ -498,7 +516,13 @@ async function doImport() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        users: validImportRows.value.map(({ username, password, role, department }) => ({ username, password, role, department })),
+        users: validImportRows.value.map(({ username, password, role, department, managedDepartments }) => ({
+          username,
+          password,
+          role,
+          department,
+          managedDepartments: managedDepartments ? managedDepartments.split(/[\/、,，;；]/).map((s) => s.trim()).filter(Boolean) : [],
+        })),
       }),
     })
     const payload = await res.json().catch(() => ({}))
@@ -524,8 +548,29 @@ function clearImport() {
   if (importFileInput.value) importFileInput.value.value = ''
 }
 
+function exportUsers() {
+  const esc = (s: unknown) => `"${String(s ?? '').replace(/"/g, '""')}"`
+  const header = ['用户名', '密码', '角色', '部门', '管理范围', '创建时间']
+  const rows = filteredUsers.value.map((u) => [
+    u.username,
+    '123456', // 占位默认密码（系统只存哈希，无法导出原密码），导入后请尽快修改
+    roleLabel(u.role),
+    u.department ?? '',
+    (u.managedDepartments?.length ? u.managedDepartments!.join('、') : ''),
+    u.createdAt,
+  ])
+  const csv = [header.map(esc).join(','), ...rows.map((r) => r.map(esc).join(','))].join('\n')
+  const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const a = document.createElement('a')
+  const ts = new Date().toISOString().replace(/[:.]/g, '-')
+  a.href = URL.createObjectURL(blob)
+  a.download = `users_${ts}.csv`
+  a.click()
+  nextTick(() => URL.revokeObjectURL(a.href))
+}
+
 function downloadTemplate() {
-  const csv = 'username,password,role,department\nalice,password123,staff,设计部\nbob,password456,dept_head,设计部\n'
+  const csv = 'username,password,role,department,managedDepartments\nalice,password123,staff,设计部,\nbob,password456,division_leader,,设计部/市场部\n'
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -563,7 +608,6 @@ function exportFailedImportCsv() {
       <h1>用户管理</h1>
       <div class="header-right">
         <span v-if="auth.user" class="user-badge">{{ auth.user.username }}</span>
-        <button class="btn-logout" @click="logout">退出登录</button>
         <a href="/portal" @click.prevent="router.push('/portal')" class="link">返回主页</a>
       </div>
     </header>
@@ -574,6 +618,22 @@ function exportFailedImportCsv() {
       <div v-else>
         <div v-if="success" class="inline-msg success">{{ success }}</div>
 
+        <div class="tools-bar">
+          <div class="tools-count">共 {{ users.length }} 位用户<span v-if="filteredUsers.length !== users.length">，筛选出 {{ filteredUsers.length }} 位</span></div>
+          <input v-model="searchKey" class="tools-search" type="text" placeholder="搜索 姓名 / 部门" />
+          <select v-model="filterRole" class="role-select tools-select">
+            <option value="all">全部角色</option>
+            <option v-for="opt in ROLE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+          <select v-model="filterDept" class="role-select tools-select">
+            <option value="all">全部部门</option>
+            <option v-for="dep in departments" :key="dep.ID" :value="dep.Name">{{ dep.Name }}（{{ deptCount[dep.Name] ?? 0 }}）</option>
+            <option value="">未设置部门（{{ deptCount['未设置'] ?? 0 }}）</option>
+          </select>
+          <button class="tools-btn" :disabled="filteredUsers.length === 0" @click="exportUsers">导出用户</button>
+        </div>
+
+        <div class="action-grid">
         <section class="dept-panel">
           <div class="panel-head">
             <h2>部门管理</h2>
@@ -628,14 +688,15 @@ function exportFailedImportCsv() {
             </button>
           </div>
         </section>
+        </div>
 
-        <section class="import-panel">
-          <div class="panel-head">
-            <h2>批量导入用户</h2>
+        <details class="import-panel">
+          <summary class="import-summary">批量导入用户</summary>
+          <div class="import-head-row">
             <button class="btn-template" @click="downloadTemplate">下载模板 CSV</button>
           </div>
           <p class="import-hint">
-            文件第一列：用户名，第二列：密码，第三列：角色（<code>user/staff/dept_head/division_leader/top_leader/admin</code>，可省略默认 user），第四列：部门（可省略）<br />
+            文件第一列：用户名，第二列：密码，第三列：角色（<code>user/staff/dept_head/division_leader/top_leader/admin</code>，可省略默认 user），第四列：部门，第五列：管理范围（分管/主管用 <code>/</code> 或 <code>、</code> 分隔多个部门，可省略）<br />
             支持 <strong>.csv</strong>、<strong>.xlsx</strong> 格式；CSV 自动识别 UTF-8 / GBK 编码，中文姓名可用；首行为标题行时自动跳过。
           </p>
           <div class="import-file-row">
@@ -669,6 +730,7 @@ function exportFailedImportCsv() {
                     <th>密码</th>
                     <th>角色</th>
                     <th>部门</th>
+                    <th>管理范围</th>
                     <th>校验</th>
                   </tr>
                 </thead>
@@ -678,6 +740,7 @@ function exportFailedImportCsv() {
                     <td>{{ row.password ? '••••••' : '' }}</td>
                     <td>{{ roleLabel(row.role) }}</td>
                     <td>{{ row.department || '—' }}</td>
+                    <td>{{ row.managedDepartments || '—' }}</td>
                     <td>
                       <span v-if="row._error" class="tag-err">{{ row._error }}</span>
                       <span v-else class="tag-ok">✓</span>
@@ -709,29 +772,31 @@ function exportFailedImportCsv() {
               </ul>
             </template>
           </div>
-        </section>
+        </details>
 
-        <div v-if="!isMobile && !isCompactPhone" class="table-wrap user-table-wrap">
+        <div v-if="users.length && filteredUsers.length === 0" class="state-msg">无匹配用户，请调整筛选条件</div>
+        <div v-else-if="!isMobile && !isCompactPhone" class="table-wrap user-table-wrap">
           <table>
             <thead>
               <tr>
-                <th>用户</th>
-                <th>角色</th>
-                <th>部门</th>
-                <th>创建时间</th>
-                <th>新密码</th>
+                <th class="col-user">用户</th>
+                <th class="col-role">角色</th>
+                <th class="col-dept">部门</th>
+                <th class="col-scope">管理范围</th>
+                <th class="col-created">创建时间</th>
+                <th class="col-pass">新密码</th>
                 <th class="th-actions">操作</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="u in users" :key="u.id">
-                <td>
+              <tr v-for="u in filteredUsers" :key="u.id">
+                <td class="col-user">
                   <div class="user-cell">
                     <span class="user-id">ID {{ u.id }}</span>
                     <span class="username">{{ u.username }}</span>
                   </div>
                 </td>
-                <td>
+                <td class="col-role">
                   <select
                     class="role-select"
                     :value="u.role"
@@ -742,7 +807,7 @@ function exportFailedImportCsv() {
                     <option v-for="opt in ROLE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                   </select>
                 </td>
-                <td>
+                <td class="col-dept">
                   <div class="dept-cell">
                     <select
                       v-model="departmentDraft[String(u.id)]"
@@ -754,19 +819,21 @@ function exportFailedImportCsv() {
                       <option value="">未设置</option>
                       <option v-for="dep in departments" :key="dep.ID" :value="dep.Name">{{ dep.Name }}</option>
                     </select>
-                    <template v-if="isLeaderRole(u.role)">
-                      <span class="mgmt-label">管理范围</span>
-                      <div class="mgmt-summary">
-                        <span class="mgmt-summary-text">
-                          {{ (u.managedDepartments?.length ?? 0) ? u.managedDepartments!.join('、') : '未设置' }}
-                        </span>
-                        <button class="btn-edit-scope" @click="openManagedModal(u)">编辑</button>
-                      </div>
-                    </template>
                   </div>
                 </td>
-                <td class="td-created">{{ u.createdAt }}</td>
-                <td>
+                <td class="col-scope">
+                  <template v-if="isLeaderRole(u.role)">
+                    <div class="mgmt-summary">
+                      <span class="mgmt-summary-text">
+                        {{ (u.managedDepartments?.length ?? 0) ? u.managedDepartments!.join('、') : '未设置' }}
+                      </span>
+                      <button class="btn-edit-scope" @click="openManagedModal(u)">编辑</button>
+                    </div>
+                  </template>
+                  <span v-else class="scope-empty">—</span>
+                </td>
+                <td class="col-created td-created">{{ u.createdAt }}</td>
+                <td class="col-pass">
                   <div class="pass-cell">
                     <input
                       v-model="passwordDraft[String(u.id)]"
@@ -786,7 +853,7 @@ function exportFailedImportCsv() {
                     </button>
                   </div>
                 </td>
-                <td>
+                <td class="col-op">
                   <button
                     class="btn-delete"
                     :disabled="deleting[String(u.id)] || !canDeleteUser(u)"
@@ -802,7 +869,7 @@ function exportFailedImportCsv() {
         </div>
 
         <div v-else class="mobile-list" :class="{ 'mobile-list-compact': isCompactPhone }">
-          <article v-for="u in users" :key="`mobile-${u.id}`" class="mobile-card">
+          <article v-for="u in filteredUsers" :key="`mobile-${u.id}`" class="mobile-card">
             <div class="mobile-top">
               <span class="mobile-id">ID {{ u.id }}</span>
               <span class="username">{{ u.username }}</span>
@@ -943,7 +1010,7 @@ function exportFailedImportCsv() {
 }
 .link { color: rgba(255,255,255,.78); text-decoration: none; font-size: .85rem; }
 
-.container { max-width: 980px; margin: 2rem auto; padding: 0 1rem; }
+.container { max-width: 1680px; margin: 2rem auto; padding: 0 1rem; }
 .state-msg { text-align: center; color: #888; padding: 3rem 0; }
 .state-msg.error { color: #e53e3e; }
 
@@ -952,6 +1019,49 @@ function exportFailedImportCsv() {
   color: var(--status-success);
   margin-bottom: .55rem;
 }
+
+.tools-bar {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid var(--surface-card-border);
+  border-radius: 12px;
+  padding: .6rem .8rem;
+  margin-bottom: .75rem;
+}
+.tools-count { font-size: .84rem; color: #475569; font-weight: 600; margin-right: auto; }
+.tools-search {
+  height: 34px;
+  width: 240px;
+  border: 1px solid #d8dff1;
+  border-radius: 8px;
+  padding: 0 .6rem;
+  font-size: .84rem;
+  color: #334155;
+}
+.tools-search:focus { border-color: var(--brand-600); box-shadow: 0 0 0 3px var(--focus-ring); }
+.tools-select { height: 34px; }
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+}
+.action-grid > section { margin-bottom: 0; }
+.import-panel { margin-bottom: .75rem; }
+.import-summary {
+  cursor: pointer;
+  font-size: .96rem;
+  font-weight: 600;
+  color: #334155;
+  padding: .2rem 0;
+  list-style: none;
+}
+.import-summary::-webkit-details-marker { display: none; }
+.import-summary::before { content: '▸ '; color: #7c89a3; }
+.import-panel[open] .import-summary::before { content: '▾ '; }
+.import-head-row { margin: .2rem 0 .5rem; }
 
 .dept-panel {
   border: 1px solid var(--surface-card-border);
@@ -1120,7 +1230,7 @@ table {
 }
 th {
   background: #f6f8fd;
-  padding: .9rem 1rem;
+  padding: .6rem .65rem;
   text-align: left;
   font-size: .85rem;
   color: #5f6880;
@@ -1131,11 +1241,21 @@ th {
 }
 
 td {
-  padding: .85rem 1rem;
+  padding: .55rem .65rem;
   border-bottom: 1px solid #edf1f7;
   font-size: .9rem;
   vertical-align: middle;
 }
+
+/* 列表列宽固定，部门列自适应 */
+.user-table-wrap table th.col-user, .user-table-wrap table td.col-user { width: 150px; }
+.user-table-wrap table th.col-role, .user-table-wrap table td.col-role { width: 148px; }
+.user-table-wrap table th.col-created, .user-table-wrap table td.col-created { width: 170px; white-space: nowrap; }
+.user-table-wrap table th.col-pass, .user-table-wrap table td.col-pass { width: 208px; }
+.user-table-wrap table th.th-actions, .user-table-wrap table td.col-op { width: 84px; text-align: center; }
+.user-table-wrap table th.col-dept, .user-table-wrap table td.col-dept { width: 200px; }
+.user-table-wrap table th.col-scope, .user-table-wrap table td.col-scope { width: 300px; }
+.scope-empty { color: #cbd5e1; }
 
 .username {
   font-weight: 600;
@@ -1225,9 +1345,10 @@ tbody tr:hover {
 .mgmt-summary {
   display: flex;
   align-items: center;
-  gap: .4rem;
-  max-width: 240px;
-  min-width: 150px;
+  gap: .45rem;
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
 }
 
 .mgmt-summary-text {
@@ -1376,11 +1497,11 @@ tbody tr:hover {
 .pass-cell {
   display: flex;
   align-items: center;
-  gap: .45rem;
+  gap: .35rem;
 }
 
 .pass-cell .pass-input {
-  width: 118px;
+  width: 112px;
 }
 
 .td-created {
@@ -1389,13 +1510,9 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
-.th-actions {
-  width: 92px;
-}
-
 .btn-pass {
-  min-width: 78px;
-  height: 30px;
+  min-width: 66px;
+  height: 28px;
   border: none;
   border-radius: 8px;
   background: #eef3ff;
@@ -1523,6 +1640,25 @@ tbody tr:hover {
   min-width: 74px;
 }
 
+/* ===== 统一面板/控件风格 ===== */
+.tools-bar,
+.dept-panel,
+.create-user-panel,
+.import-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #f8faff 100%);
+  border: 1px solid var(--surface-card-border);
+  border-radius: 12px;
+  padding: .9rem 1rem;
+  box-shadow: 0 2px 8px rgba(77, 95, 164, .04);
+}
+.panel-head { margin-bottom: .7rem; }
+.role-select,
+.create-input,
+.tools-search {
+  height: 34px;
+}
+.create-grid { gap: .7rem .8rem; margin-top: .1rem; }
+
 @media (max-width: 768px) {
   .site-header {
     padding: .9rem 1rem;
@@ -1543,6 +1679,14 @@ tbody tr:hover {
 
   .container {
     margin: 1rem auto;
+  }
+
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tools-search {
+    width: 100%;
   }
 
   .create-grid {

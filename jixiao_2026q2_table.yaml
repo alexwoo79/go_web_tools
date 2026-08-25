@@ -5,6 +5,12 @@ forms:
     category: "hr"
     status: "published"
     weight_sum_total_limit: 1
+    # 表单评分声明（可选）：声明“本表单如何被评分”，评分引擎只读此配置，不改代码
+    scoring:
+      mode: "single"            # single=每个评分人打一个总分；item_avg=逐项简单平均；item_weighted=逐项按权重汇总
+      group: ""                 # 评分项所在的 repeated_group；留空=对所有含 score_field 的表格逐项打分
+      score_field: "de_fen"     # 每项得分字段名
+      weight_field: "dan_xiang_quan_zhong"  # 每项权重字段名
     fields:
       - name: "bu_men"
         label: "部门"

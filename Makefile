@@ -2,12 +2,13 @@ SHELL := /bin/bash
 
 CONFIG ?= ./config.yaml
 
-.PHONY: help deps api web dev build package windows all test clean docker-build docker-up docker-down
+.PHONY: help deps api web dev air build package windows all test clean docker-build docker-up docker-down
 
 help:
 	@echo "Common targets:"
 	@echo "  make api          Run Go backend only with config.yaml"
 	@echo "  make web          Run Vue frontend dev server"
+	@echo "  make air          Run Go backend with hot reload (air)"
 	@echo "  make dev          Build embedded frontend and run local binary"
 	@echo "  make build        Build local binary with embedded frontend"
 	@echo "  make package      Same as make build"
@@ -27,6 +28,9 @@ api:
 
 web:
 	cd ./vue-form && npm run dev
+
+air:
+	air -c .air.toml
 
 dev:
 	./build.sh

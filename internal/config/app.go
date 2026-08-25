@@ -52,6 +52,7 @@ func NewApp(configPath string) (*App, error) {
 			Model:               struct{ TableName string }{TableName: tableName},
 			Fields:              fields,
 			WeightSumTotalLimit: fc.WeightSumTotalLimit,
+			Scoring:             ToScoringInfo(fc.Scoring),
 			FileModTime:         fc.FileModTime,
 			ConfigSource:        fc.ConfigSource,
 		})

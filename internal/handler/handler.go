@@ -176,8 +176,18 @@ type FormInfo struct {
 	Fields []FieldInfo
 	// 表单级约束：所有 repeated_group 权重合计上限
 	WeightSumTotalLimit *float64
+	// 表单评分声明（可选），驱动“本表单如何被评分”
+	Scoring         *ScoringInfo
 	FileModTime         int64  // 配置文件修改时间戳
 	ConfigSource        string // 来源配置文件名，空 = 主配置
+}
+
+// ScoringInfo 表单评分声明。
+type ScoringInfo struct {
+	Mode        string // single | item_avg | item_weighted
+	Group       string // 评分项所在的 repeated_group
+	ScoreField  string // 每项得分字段名
+	WeightField string // 每项权重字段名
 }
 
 type FieldInfo struct {
@@ -663,6 +673,11 @@ func (h *Handler) FormPageHandler(w http.ResponseWriter, r *http.Request) {
 			"role":       session.Role,
 			"department": h.userDepartment(session.UserID),
 		}
+		if period, perr := h.db.GetActiveAssessmentPeriod(); perr == nil && period != nil {
+			if rec, rerr := h.db.GetAssessmentRecordByUser(period.ID, session.UserID, fi.Name); rerr == nil && rec != nil {
+				form["SubmissionStatus"] = rec.Status
+			}
+		}
 	}
 
 	// 转换字段
@@ -759,6 +774,12 @@ func normalizePayloadArray(val interface{}) []interface{} {
 	switch v := val.(type) {
 	case []interface{}:
 		return v
+	case []map[string]interface{}:
+		arr := make([]interface{}, 0, len(v))
+		for _, item := range v {
+			arr = append(arr, item)
+		}
+		return arr
 	case []string:
 		arr := make([]interface{}, 0, len(v))
 		for _, item := range v {
@@ -1261,6 +1282,14 @@ func (h *Handler) SubmitHandler(w http.ResponseWriter, r *http.Request) {
 	// 	})
 	// 	return
 	// }
+
+	// 考核表单：已评分/审核/确认的记录不允许重新提交（仅保留最后一次填报）
+	if period, perr := h.db.GetActiveAssessmentPeriod(); perr == nil && period != nil && period.FormName == fi.Name {
+		if rec, rerr := h.db.GetAssessmentRecordByUser(period.ID, session.UserID, fi.Name); rerr == nil && rec != nil && rec.Status != AssessmentStatusSubmitted {
+			jsonResponse(w, http.StatusConflict, map[string]string{"error": "该考核已进行评分/审核，无法重新提交"})
+			return
+		}
+	}
 
 	rowID, err := h.finalizeSubmission(fi, data, session.UserID, getClientIP(r))
 	if err != nil {
@@ -2043,10 +2072,11 @@ func (h *Handler) DeleteUserByAdminHandler(w http.ResponseWriter, r *http.Reques
 func (h *Handler) ImportUsersHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Users []struct {
-			Username   string `json:"username"`
-			Password   string `json:"password"`
-			Role       string `json:"role"`
-			Department string `json:"department"`
+			Username           string   `json:"username"`
+			Password           string   `json:"password"`
+			Role               string   `json:"role"`
+			Department         string   `json:"department"`
+			ManagedDepartments []string `json:"managedDepartments"`
 		} `json:"users"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -2090,9 +2120,39 @@ func (h *Handler) ImportUsersHandler(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, FailItem{username, "用户名已存在"})
 			continue
 		}
-		if _, err = h.db.CreateUser(username, hashPassword(password), role, department); err != nil {
+		uid, err := h.db.CreateUser(username, hashPassword(password), role, department)
+		if err != nil {
 			failed = append(failed, FailItem{username, "创建失败"})
 			continue
+		}
+		// 领导：设置管理范围（自动创建缺失的部门，名称为空视为不设置）
+		if (role == RoleDivisionLeader || role == RoleTopLeader) && len(u.ManagedDepartments) > 0 {
+			deptIDByName := map[string]int64{}
+			if depts, derr := h.db.ListDepartments(); derr == nil {
+				for _, d := range depts {
+					deptIDByName[d.Name] = d.ID
+				}
+			}
+			ids := make([]int64, 0, len(u.ManagedDepartments))
+			for _, name := range u.ManagedDepartments {
+				name = strings.TrimSpace(name)
+				if name == "" {
+					continue
+				}
+				id, ok := deptIDByName[name]
+				if !ok {
+					if nid, cerr := h.db.CreateDepartment(name); cerr == nil {
+						deptIDByName[name] = nid
+						id = nid
+					} else {
+						continue
+					}
+				}
+				ids = append(ids, id)
+			}
+			if len(ids) > 0 {
+				_ = h.db.SetLeaderDepartments(int(uid), ids)
+			}
 		}
 		successCount++
 	}

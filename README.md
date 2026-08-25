@@ -142,6 +142,16 @@ make web
 
 这种模式下前端走 Vite 开发服务器，`/api` 会自动代理到本地 Go 服务。
 
+**Go 热重载（air）**：修改 Go 代码后自动重新编译并重启后端，配合前端 Vite 热更新：
+
+```bash
+go install github.com/air-verse/air@latest   # 首次安装
+make air        # 终端 1：Go 后端热重载（http://localhost:8080）
+make web        # 终端 2：Vue 前端热更新（代理 /api）
+```
+
+配置见 `.air.toml`（监听 `.go`/`.yaml`，排除前端与构建目录）。
+
 如果需要按接近发布态的一体化方式验证：
 
 ```bash

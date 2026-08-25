@@ -62,12 +62,6 @@ onMounted(async () => {
   }
 })
 
-async function logout() {
-  await fetch('/api/logout', { method: 'POST' })
-  auth.setUser(null)
-  router.push('/login')
-}
-
 function formatDeadline(raw?: string): string {
   const value = (raw ?? '').trim()
   if (!value) return '长期有效'
@@ -128,7 +122,6 @@ function isExpiringToday(raw?: string): boolean {
         <a v-if="auth.user" href="/my-submissions" @click.prevent="router.push('/my-submissions')">我的提交</a>
         <a v-if="!auth.user" href="/login" @click.prevent="router.push('/login')">登录</a>
         <a v-if="!auth.user" href="/register" @click.prevent="router.push('/register')">注册</a>
-        <a v-if="auth.user" href="#" @click.prevent="logout">退出</a>
       </nav>
     </header>
 
