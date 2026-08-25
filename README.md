@@ -1,46 +1,37 @@
-# Go Web 表单系统/数据制图 - README
+# Go Web 表单系统
 
-[TOC]
+Go + Vue 3 + SQLite 的表单系统，使用 YAML 定义表单、自动建表、支持在线管理配置与热重载。
 
-## 📋 概述
+## 项目状态
 
-一个基于 Go 语言和 SQLite 的 Web 表单系统，可以通过 YAML 文件定义 HTML 表单并收集数据。
+- 表单配置支持 `forms`、`includes`、`select/checkbox/radio` 的静态 `options` 和动态 `options_from`
+- 前端支持 `repeated_group`、评分声明 `scoring`、权限与结果分析等当前功能
+- 后端默认把表单数据写入 SQLite，配置热重载后会自动刷新表单定义
 
-## ✨ 特性
-
-- ✅ 通过 YAML 文件定义表单
-- ✅ 支持多种表单字段类型
-- ✅ 使用 SQLite 数据库存储数据
-- ✅ 自动创建数据表
-- ✅ 支持文件保存
-- ✅ 响应式 UI 设计
-- ✅ RESTful API 接口
-
-## 🚀 快速开始
-
-### 安装依赖
+## 快速开始
 
 ```bash
 go mod download
 cd vue-form && npm ci
 ```
 
-### 推荐命令
+常用入口：
 
 ```bash
-make api      # 只跑 Go 后端
-make web      # 只跑 Vue 前端开发服务器
-make dev      # 构建内嵌前端并启动本地二进制
-make build    # 构建带内嵌前端的本机版本
+make api       # 只跑 Go 后端
+make web       # 只跑 Vue 前端开发服务器
+make air       # Go 后端热重载
+make dev       # 构建嵌入式前端并启动本地二进制
+make build     # 构建本机二进制
+make test      # 运行后端测试
+make demo      # 使用 .demo/config.yaml 启动独立演示库
 ```
 
-### 访问应用
+默认访问地址是 `http://localhost:8080`。
 
-打开浏览器访问: http://localhost:8080
+## 配置概览
 
-## 📝 配置文件
-
-配置文件使用 YAML 格式：
+主配置通常使用 `config.yaml`，并通过 `includes` 合并独立表单文件：
 
 ```yaml
 server:
@@ -51,17 +42,16 @@ database:
   path: "data/data.db"
   type: "sqlite"
 
+includes:
+  - "*.yaml"
+
 forms:
   - name: "user_registration"
-    title: "用户注册"
-    description: "用户注册表单"
+    title: "用户注册表单"
     category: "general"
-    pinned: true
-    sort_order: 10
-    priority: "high"      # high | medium | low
-    status: "published"   # draft | published | archived
-    publish_at: "2026-03-20 09:00:00"
-    expire_at: "2026-12-31"
+    status: "published"
+    model:
+      table_name: "user_registration"
     fields:
       - name: "username"
         label: "用户名"
@@ -69,155 +59,60 @@ forms:
         required: true
 ```
 
-管理排序规则（已内置）：
-
-1. `pinned=true` 置顶优先
-2. `status` 顺序：`published` > `draft` > `archived`
-3. `sort_order` 升序（越小越靠前）
-4. `priority` 顺序：`high` > `medium` > `low`
-5. `publish_at` 降序（更新的更靠前）
-6. `name` 升序兜底，保证稳定顺序
-
-## 📋 表单字段类型
+常用字段类型：
 
 | 类型 | 说明 |
-|------|------|
-| text | 文本输入框 |
-| email | 邮箱输入框 |
-| tel | 电话输入框 |
-| number | 数字输入框 |
-| textarea | 多行文本框 |
-| select | 下拉选择框 |
-| checkbox | 复选框 |
-| radio | 单选框 |
-| date | 日期选择器 |
-| time | 时间选择器 |
+| --- | --- |
+| text / email / tel / password | 单行输入 |
+| number | 数字输入，支持 `min/max/step` |
+| textarea | 多行输入 |
+| select / checkbox / radio | 选择型字段，支持 `options` 或 `options_from` |
+| date / time | 日期和时间 |
+| range | 滑块 |
+| repeated_group | 可增删行的表格字段 |
 
-## 📂 项目结构
+动态选项：
+
+- `options_from: users` 取用户名列表
+- `options_from: departments` 取部门列表
+- `options_from: roles` 取角色列表
+
+## 路由与权限
+
+- `/api/register`、`/api/login`、`/api/logout`、`/api/me`
+- `/api/forms`、`/api/forms/{name}`、`/api/submit/{name}`、`/api/my/submissions`
+- `/api/public/forms/{token}`、`/api/public/submit/{token}`
+- `/api/admin/*`、`/api/export/{formName}`、`/api/data/{formName}`、`/api/assessment/*`
+
+当前约定：
+
+- 表单列表、表单页、普通提交接口需要登录
+- 公共分享链接走 `/api/public/*`
+- 管理接口需要管理员权限
+
+## 目录概览
 
 ```
-go-web/
-├── cmd/
-│   └── server/     # Web 服务器
-├── internal/
-│   ├── config/     # 配置管理
-│   ├── handler/    # HTTP 处理器
-│   ├── models/     # 数据模型
-│   └── utils/      # 工具函数
-├── ui/
-│   ├── templates/  # HTML 模板
-│   ├── static/     # 内嵌静态资源
-│   └── frontend/   # 内嵌 Vue 构建产物
-├── data/           # 数据文件
-├── config.yaml     # 配置文件
-└── go.mod          # Go 模块
+go_web_tools/
+├── cmd/server            # 服务入口
+├── internal              # 配置、处理器、模型
+├── ui                    # 模板和嵌入式前端资源
+├── vue-form              # Vue 3 前端源码
+├── docs                  # 维护与清理文档
+├── skills/forms-go       # Excel -> YAML 辅助 Skill
+├── *.yaml                # 表单与配置文件
+├── Makefile / build.sh   # 构建入口
+└── CHANGELOG.md          # 变更记录
 ```
 
-更多仓库整理、运行期/开发期文件清单与删除流程请参阅：
-[docs/REPO_MAINTENANCE.md](docs/REPO_MAINTENANCE.md)
+仓库整理和历史文档说明见 [docs/REPO_MAINTENANCE.md](docs/REPO_MAINTENANCE.md)，历史过程资料已归档到 [docs/archive/](docs/archive/README.md)。
 
-## 🛠️ 开发
+## 开发提示
 
-### 📊 Excel → 表单 YAML（由 Codex Skill 完成）
-
-Excel 转 YAML 存在结构不确定性（合并单元格、多级表头、区块表格等），**Go 程序不内置 Excel 解析**，
-转换工作由仓库内的 Codex Skill 交互式完成：
-
-- Skill 位置：`skills/forms-go/`（名 forms_go），安装到 `~/.codex/skills/` 后对 Codex 说「把这份 Excel 变成在线表单并上线」或「构造一个 XX 表单」；
-- 内置可执行脚本 `analyze_excel.py`（结构分析）与 `excel_to_yaml.py`（生成 YAML，支持 `--label`/`--type` 等参数修正）；
-- 生成的 YAML 通过管理后台「新增表单」粘贴上线，或写入独立 YAML（根目录 `*.yaml` 自动加载）；
-- 仓库根目录 `AGENTS.md` 已内置完整工作流与 YAML 规范。
-
-### 最小操作
-
-前后端分离调试是默认推荐方式：
-
-```bash
-# 终端 1
-make api
-
-# 终端 2
-make web
-```
-
-这种模式下前端走 Vite 开发服务器，`/api` 会自动代理到本地 Go 服务。
-
-**Go 热重载（air）**：修改 Go 代码后自动重新编译并重启后端，配合前端 Vite 热更新：
-
-```bash
-go install github.com/air-verse/air@latest   # 首次安装
-make air        # 终端 1：Go 后端热重载（http://localhost:8080）
-make web        # 终端 2：Vue 前端热更新（代理 /api）
-```
-
-配置见 `.air.toml`（监听 `.go`/`.yaml`，排除前端与构建目录）。
-
-如果需要按接近发布态的一体化方式验证：
-
-```bash
-make dev
-```
-
-这个命令会先执行前端构建，再把产物内嵌到 Go 二进制中启动，适合检查接近发布态的行为。
-
-### 构建项目
-
-推荐直接使用 Make：
-
-```bash
-make build
-make windows
-make all
-make package
-```
-
-底层仍然调用一体化脚本 [build.sh](/Users/crccredc/Documents/github/go_form_web-vue/build.sh)，它会先构建前端，再把产物同步到内嵌目录后编译 Go 二进制。
-
-如果你需要直接调用脚本，也可以使用：
-
-```bash
-./build.sh              # 构建本机版本
-./build.sh windows      # 构建 Windows 版本（bin/go-web.exe）
-./build.sh all          # 同时构建本机 + Windows
-```
-
-### Docker 发布
-
-当前推荐方式是继续使用“前端内嵌到 Go 二进制”的单容器发布模式：
-
-```bash
-make docker-build
-make docker-up
-```
-
-这样容器里只需要：
-
-- 后端可执行文件
-- 配置文件
-- 数据目录挂载
-
-不需要额外维护单独的前端静态目录容器。
-
-### 补充说明
-
-如果只是临时验证 Go 服务本身，仍然可以直接运行：
-
-```bash
-go run ./cmd/server --config ./config.yaml
-```
-
-但日常开发和发布更建议统一使用 `make api`、`make web`、`make dev`、`make build` 这组入口。
-
-### 运行测试
-
-```bash
-go test ./...
-```
-
-## 📄 许可证
-
-MIT License
-# go_form_web
+- Excel 转 YAML 的工作流在 `skills/forms-go/` 与仓库根目录 `AGENTS.md` 中说明
+- 想验证接近发布态的行为，用 `make dev`
+- 想看后端热重载，用 `make air`
+- 想运行测试，用 `make test`
 
 示例：在本地调试前端与后端（前后端分离）
 

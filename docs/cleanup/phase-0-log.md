@@ -8,7 +8,7 @@
 - 建立“逐项过程文档 + 按阶段提交 git”的执行框架。
 
 ## 本阶段变更
-1. 新增 clean.md，定义清理范围、分级、执行顺序与验收标准。
+1. 早期清理计划已归档为 `docs/archive/cleanup-plan.md`，保留原始背景说明。
 2. 新增 docs/cleanup/README.md，定义阶段执行规范。
 3. 新增 docs/cleanup/change-log.md，作为跨阶段总台账。
 4. 新增 docs/cleanup/phase-0-log.md，作为阶段 0 留痕。

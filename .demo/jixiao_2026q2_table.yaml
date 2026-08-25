@@ -1,58 +1,60 @@
 forms:
-  - name: "jixiao_2026q2_table"
-    title: "员工绩效季度考核目标责任书（表格版）"
-    description: "由 Excel 模板自动生成：员工绩效季度考核目标责任书（表格版）"
-    category: "hr"
-    status: "published"
-    weight_sum_total_limit: 1
-    scoring:
-      mode: "item_weighted"
-      group: ""
-      score_field: "de_fen"
-      weight_field: "dan_xiang_quan_zhong"
-    fields:
-      - name: "bu_men"
-        label: "部门"
-        type: "text"
-        placeholder: "请输入部门"
-        required: false
-      - name: "gang_wei"
-        label: "岗位"
-        type: "text"
-        placeholder: "请输入岗位"
-        required: false
-      - name: "xing_ming"
-        label: "姓名"
-        type: "text"
-        placeholder: "请输入姓名"
-        required: false
-      - name: "key_tasks"
-        label: "重点（专项）工作任务"
-        type: "repeated_group"
-        required: false
-        default_rows: 3
-        min_rows: 1
-        max_rows: 100
-        weight_sum_field: "dan_xiang_quan_zhong"
-        weight_sum_limit: 1
-        group_fields:
-          - name: "xu_hao"
-            label: "序号"
-            type: "number"
-            min: 0
-            required: false
-          - name: "kao_he_zhi_biao"
-            label: "考核指标"
-            type: "text"
-            required: true
-          - name: "dan_xiang_quan_zhong"
-            label: "单项权重"
-            type: "number"
-            min: 0
-            required: false
-          - name: "de_fen"
-            label: "自评分"
-            type: "number"
-            min: 0
-            max: 100
-            required: false
+    - category: hr
+      description: 由 Excel 模板自动生成：员工绩效季度考核目标责任书（表格版）
+      fields:
+        - label: 部门
+          name: bu_men
+          options_from: departments
+          placeholder: 请输入部门
+          required: false
+          type: select
+        - label: 岗位
+          name: gang_wei
+          options_from: roles
+          placeholder: 请输入岗位
+          required: false
+          type: select
+        - label: 姓名
+          name: xing_ming
+          placeholder: 请输入姓名
+          required: false
+          type: text
+        - default_rows: 3
+          group_fields:
+            - label: 序号
+              min: 0
+              name: xu_hao
+              required: false
+              type: number
+            - label: 考核指标
+              name: kao_he_zhi_biao
+              required: true
+              type: text
+            - label: 单项权重
+              min: 0
+              name: dan_xiang_quan_zhong
+              required: false
+              type: number
+            - label: 自评分
+              max: 100
+              min: 0
+              name: de_fen
+              required: false
+              type: number
+          label: 重点（专项）工作任务
+          max_rows: 100
+          min_rows: 1
+          name: key_tasks
+          required: false
+          type: repeated_group
+          weight_sum_field: dan_xiang_quan_zhong
+          weight_sum_limit: 1
+      name: jixiao_2026q2_table
+      scoring:
+        group: ""
+        mode: item_weighted
+        score_field: de_fen
+        weight_field: dan_xiang_quan_zhong
+      status: published
+      title: 员工绩效季度考核目标责任书（表格版）
+      weight_sum_total_limit: 1

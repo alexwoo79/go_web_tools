@@ -1,55 +1,15 @@
-# Go Web 表单系统 - 快速开始指南
+# 快速开始
 
-## 安装步骤
+## 1. 安装依赖
 
 ```bash
-# 1. 进入项目目录
-cd /root/go-web
-
-# 2. 下载依赖
 go mod download
-
-# 3. 运行服务器
-go run cmd/server/main.go
-
-# 4. 访问应用
-浏览器打开: http://localhost:8080
+cd vue-form && npm ci
 ```
 
-推荐的最小命令入口：
+## 2. 启动方式
 
-```bash
-make api      # 后端调试
-make web      # 前端调试
-make dev      # 一体化本地验证
-make build    # 构建内嵌前端的本机二进制
-```
-
-## 使用说明
-
-### 1. 配置表单
-
-编辑 `config.yaml` 文件：
-
-```yaml
-forms:
-  - name: "contact"
-    title: "联系我们"
-    description: "填写联系方式"
-    fields:
-      - name: "name"
-        label: "姓名"
-        type: "text"
-        required: true
-```
-
-### 2. 启动服务器
-
-```bash
-go run cmd/server/main.go
-```
-
-如果前后端分离调试，使用：
+最常用的是分离启动：
 
 ```bash
 # 终端 1
@@ -59,70 +19,61 @@ make api
 make web
 ```
 
-如果要按发布形态本地运行，使用：
+如果你想看热重载：
+
+```bash
+make air
+make web
+```
+
+如果你想直接跑接近发布态的本机二进制：
 
 ```bash
 make dev
 ```
 
-### 3. 访问表单
+## 3. 访问地址
 
-- 主页: http://localhost:8080
-- 填写表单: http://localhost:8080/forms/contact
+- 首页：`http://localhost:8080`
+- 表单页：`http://localhost:8080/forms/<form-name>`
+- 管理后台：`http://localhost:8080/admin`
 
-## 数据存储
+## 4. 配置表单
 
-数据保存在:
-- 数据库: `data/data.db`
-- 文件: `data/{form-name}/submit_*.json`
+把表单写进 `config.yaml` 或单独的 `*.yaml` 文件：
 
-## 高级功能
-
-### 使用自定义端口
-
-```bash
-go run cmd/server/main.go -port 9090
+```yaml
+forms:
+  - name: "contact"
+    title: "联系我们"
+    description: "填写联系方式"
+    model:
+      table_name: "contact"
+    fields:
+      - name: "name"
+        label: "姓名"
+        type: "text"
+        required: true
 ```
 
-### 发布构建
+如果要引用用户、部门或角色列表，直接用：
 
-```bash
-make build
-make windows
-make all
+```yaml
+type: select
+options_from: users
 ```
 
-### Docker 运行
+## 5. 常用命令
 
 ```bash
-make docker-build
-make docker-up
+make build      # 构建本机二进制
+make windows    # 构建 Windows 二进制
+make all        # 同时构建本机和 Windows 版本
+make test       # 运行测试
+make demo       # 使用 .demo/config.yaml 运行独立演示库
 ```
 
-### 查看表单数据
+## 6. 数据保存
 
-```bash
-sqlite3 data/data.db
-.tables
-SELECT * FROM user_registration;
-```
-
-## 常见问题
-
-### Q: 如何添加新表单？
-A: 编辑 `config.yaml`，添加新的 form 配置即可。
-
-### Q: 数据保存在哪里？
-A: 数据同时保存在 SQLite 数据库和 JSON 文件中。
-
-### Q: 如何修改表单字段？
-A: 编辑 `config.yaml`，修改 fields 配置，重启服务器。
-
-## API 端点
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | / | 首页 |
-| GET | /forms | 表单列表 (JSON) |
-| GET | /forms/{name} | 表单页面 |
-| POST | /api/submit/{name} | 提交表单 |
+当前提交数据写入 SQLite，数据库路径由 `database.path` 决定。  
+如果你在开发时看不到最新表单，先确认配置文件是否被 `includes` 合并进来，再重启或用热重载刷新。

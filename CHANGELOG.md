@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### 2026-08-25 文档整理
+
+#### Changed
+- 重写 `README.md`、`QUICKSTART.md`、`PROJECT.md`、`MULTI_CONFIG_GUIDE.md`，统一为当前仓库口径。
+- 更新 `docs/REPO_MAINTENANCE.md` 与 `docs/cleanup/*`，把阶段日志和现状对齐。
+- 归档历史修复/总结类 Markdown，减少根目录噪音。
+
 ### 2026-08-25 绩效考核模块（评分体系重构 + 结果分析）
 
 #### Added

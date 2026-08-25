@@ -1,28 +1,30 @@
-# Phase 1 过程记录（P0 文档一致性）
+# Phase 1 过程记录（主入口文档与历史说明归档）
 
 ## 日期
-- 2026-04-22（启动）
+- 2026-08-25
 
 ## 目标
-- 清理绝对路径、旧仓库名、失效链接。
-- 统一文档与当前路由鉴权口径。
+- 统一主入口文档为当前仓库口径。
+- 把历史修复说明和一次性总结归档到 `docs/archive/`。
+- 让路由、命令、配置项和文档保持一致。
 
 ## 任务分解（逐项记录）
 | 序号 | 文件 | 问题 | 动作 | 证据 | 结果 |
 |---|---|---|---|---|---|
-| 1 | README.md | 绝对路径、尾部残留 | 待处理 | - | todo |
-| 2 | QUICKSTART.md | 启动命令与口径过时 | 待处理 | - | todo |
-| 3 | LOGIN_SYSTEM.md | 匿名提交描述不符 | 待处理 | - | todo |
-| 4 | LOGIN_FEATURE_SUMMARY.md | 公开访问描述需复核 | 待处理 | - | todo |
-| 5 | CHECKBOX_FIX_REPORT.md | file:// 与失效链接 | 待处理 | - | todo |
+| 1 | README.md | 入口说明过旧 | 已更新 | 对照 `internal/config/router.go`、`internal/config/config.go` | done |
+| 2 | QUICKSTART.md | 启动命令与口径过时 | 已更新 | 对照 `Makefile` | done |
+| 3 | PROJECT.md | 目录说明过旧 | 已更新 | 对照当前仓库树 | done |
+| 4 | MULTI_CONFIG_GUIDE.md | 多配置说明过旧 | 已更新 | 对照 `internal/config/config.go` | done |
+| 5 | 历史修复与清理说明 | 占据根目录 | 已归档 | `docs/archive/README.md` | done |
 
 ## 验证清单
-- [ ] 文档内无绝对路径。
-- [ ] 文档内无 file:// 链接。
-- [ ] 提交/管理接口权限描述与路由一致。
+- [x] 文档内无绝对路径。
+- [x] 文档内无 file:// 链接。
+- [x] 提交/管理接口权限描述与路由一致。
+- [x] 根目录历史修复说明已归档到 `docs/archive/`。
 
 ## 风险与备注
-- analytics 权限采用“文档对齐代码”或“代码对齐文档”需在本阶段明确。
+- 当前文档以代码现状为准，后续若路由再变更，应先改代码，再同步 README / QUICKSTART。
 
 ## 下一步
-- 执行第 1~5 项文档改动并逐项更新本表。
+- 更新总台账并继续整理脚本/配置口径。
