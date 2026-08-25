@@ -31,6 +31,16 @@ def emit_yaml(form: dict) -> str:
     lines.append(f"    status: {quote(form.get('status') or 'published')}")
     if form.get("weight_sum_total_limit") is not None:
         lines.append(f"    weight_sum_total_limit: {_num(form['weight_sum_total_limit'])}")
+    if form.get("scoring"):
+        sc = form["scoring"]
+        lines.append("    scoring:")
+        if sc.get("mode"):
+            lines.append(f"      mode: {quote(sc['mode'])}")
+        lines.append(f"      group: {quote(sc.get('group', ''))}")
+        if sc.get("score_field"):
+            lines.append(f"      score_field: {quote(sc['score_field'])}")
+        if sc.get("weight_field"):
+            lines.append(f"      weight_field: {quote(sc['weight_field'])}")
     lines.append("    fields:")
     for f in form["fields"]:
         lines.extend(emit_field_lines(f, "      "))
@@ -517,6 +527,55 @@ def _col_letter(idx: int) -> str:
     return s
 
 
+def detect_scoring(form: dict) -> dict | None:
+    """自动识别评分字段：repeated_group 内含『得分/评分/分值』与『权重/比例/占比』列。"""
+    rgs = [f for f in form.get("fields", []) if f.get("type") == "repeated_group"]
+    if not rgs:
+        return None
+    sf = None
+    wf = None
+    for g in rgs:
+        for gf in g.get("group_fields", []):
+            label = (gf.get("label") or "").lower()
+            name = gf.get("name") or ""
+            if re.search(r"得分|评分|分值", label) and gf.get("type") == "number":
+                if not sf:
+                    sf = name
+            if re.search(r"权重|比例|占比", label):
+                if not wf:
+                    wf = name
+    if not sf:
+        return None
+    mode = "item_weighted" if wf else "item_avg"
+    return {"mode": mode, "group": "", "score_field": sf, "weight_field": wf or ""}
+
+
+def apply_scoring(form: dict, args) -> dict:
+    """叠加 scoring：优先用户 `--scoring-*` 覆盖，否则用自动识别结果。"""
+    detected = None if args.no_scoring else detect_scoring(form)
+    overrides = {
+        "mode": getattr(args, "scoring_mode", None),
+        "group": getattr(args, "scoring_group", None),
+        "score_field": getattr(args, "scoring_score_field", None),
+        "weight_field": getattr(args, "scoring_weight_field", None),
+    }
+    has_override = any(v is not None for v in overrides.values())
+    if args.no_scoring:
+        return form
+    if has_override:
+        d = detected or {}
+        sc = {
+            "mode": overrides["mode"] or d.get("mode", "single"),
+            "group": overrides["group"] if overrides["group"] is not None else d.get("group", ""),
+            "score_field": overrides["score_field"] if overrides["score_field"] is not None else d.get("score_field", ""),
+            "weight_field": overrides["weight_field"] if overrides["weight_field"] is not None else d.get("weight_field", ""),
+        }
+        form["scoring"] = {k: v for k, v in sc.items() if v not in ("", None)}
+    elif detected:
+        form["scoring"] = detected
+    return form
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Excel/CSV -> 表单 YAML")
     p.add_argument("file")
@@ -548,6 +607,12 @@ def main() -> None:
     p.add_argument("--weight-total-limit", type=float, help="表单级权重合计上限（weight_sum_total_limit）")
     p.add_argument("--drop", dest="drop_cols", action="append", default=[], metavar="COL",
                    help="跳过的列（字母/数字/标签），可重复")
+    p.add_argument("--no-scoring", action="store_true", help="不自动生成 scoring 评分声明")
+    p.add_argument("--scoring-mode", choices=["single", "item_avg", "item_weighted"],
+                   help="评分模式（默认自动：有得分+权重→item_weighted，仅得分→item_avg）")
+    p.add_argument("--scoring-group", help="评分项 repeated_group 字段名（留空=所有含 score_field 的表格）")
+    p.add_argument("--scoring-score-field", help="每项得分字段名（自动取 得分/评分/分值 列）")
+    p.add_argument("--scoring-weight-field", help="每项权重字段名（自动取 权重/比例/占比 列）")
     args = p.parse_args()
 
     try:
@@ -586,6 +651,10 @@ def main() -> None:
         print(f"生成失败: {e}", file=sys.stderr)
         sys.exit(1)
 
+    # 评分声明：自动识别 得分/权重 列，或按 --scoring-* 覆盖
+    apply_scoring(form, args)
+    yaml_text = emit_yaml(form)
+
     # 决策摘要（stderr，便于与 YAML 分开阅读）
     print(f"工作表: {active}（共 {len(sheets)} 个）  表头行: {header['header_idx'] + 1}", file=sys.stderr)
     for f in form["fields"]:
@@ -598,6 +667,10 @@ def main() -> None:
         print(f"  {f['label']} -> {f['name']} [{f['type']}]{req}{opts}", file=sys.stderr)
     for w in warnings:
         print(f"  警告: {w}", file=sys.stderr)
+    if form.get("scoring"):
+        sc = form["scoring"]
+        print(f"  评分声明: mode={sc.get('mode')} group={sc.get('group') or '(所有含score_field)'} "
+              f"score_field={sc.get('score_field')} weight_field={sc.get('weight_field') or '(无)'}", file=sys.stderr)
 
     if args.json:
         print(json.dumps({"yaml": yaml_text, "form": form, "warnings": warnings}, ensure_ascii=False, indent=2))

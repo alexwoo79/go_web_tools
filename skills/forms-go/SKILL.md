@@ -31,6 +31,8 @@ python3 -m pip install -r skills/forms-go/scripts/requirements.txt
 
 - `analyze_excel.py`：输出表格结构报告（工作表、合并单元格、逐行明细、每列样例与推断、表头回退提示）。
 - `excel_to_yaml.py`：按推断规则 + 参数覆盖生成 YAML；`--json` 返回结构化结果；`--output` 写文件。
+  会**自动识别 `得分/评分/分值` 与 `权重/比例/占比` 列并生成 `scoring` 块**；
+  可用 `--no-scoring` 关闭，或用 `--scoring-mode` / `--scoring-group` / `--scoring-score-field` / `--scoring-weight-field` 覆盖。
 - `lib_excel.py`：共享解析库（表头识别、合并标签回退、类型推断、拼音字段名）。
 - `validate_form_yaml.py`：校验 YAML 是否符合项目 schema（字段类型、必填、options、repeated_group、权重约束等），生成后必跑。
 
@@ -48,7 +50,8 @@ python3 excel_to_yaml.py 考核表.xlsx \
 
 `--group-by` 指定分组列（列字母/数字/标签），按该列值（含合并单元格）把数据行分成多个
 `repeated_group` 表格；`--drop` 跳过列（如已删掉的「权重」列）、`--table-name` 指定表格字段名、
-`--weight-*` 生成权重合计约束。
+`--weight-*` 生成权重合计约束。若分组表格里含「得分 + 权重」列，脚本会自动在 `forms[0]` 下追加 `scoring:` 块
+（`mode: item_weighted`、`score_field`、`weight_field`），无需手动写；只含得分则自动用 `item_avg`。
 
 自动识别能力：表头上方「标签：值」信息行（如 `部门：设计研究部`）会生成前置 text 字段
 （部门/岗位/姓名等），可用 `--no-info-fields` 关闭；信息行与合并的分节标题行不会干扰表头定位。
