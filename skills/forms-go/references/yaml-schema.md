@@ -112,24 +112,27 @@ forms:
 ## 表单评分声明（可选）
 
 表单可用 `scoring:` 块向考核模块声明“本表单如何被评分”。评分引擎只读此配置，改表单不用改评分代码。
+考核类表单（含 考核指标/得分/权重 的 repeated_group 表格）建议加上，否则按默认 `single` 处理。
 
 ```yaml
 forms:
   - name: example_table
     scoring:
-      mode: "single"                    # single=每个评分人打一个总分；item_avg/item_weighted=预留（按项打分）
-      group: "key_tasks"                # 评分项所在的 repeated_group（item 模式时使用）
-      score_field: "de_fen"             # 每项得分字段名
-      weight_field: "dan_xiang_quan_zhong"  # 每项权重字段名
+      mode: "item_weighted"             # single | item_avg | item_weighted
+      group: ""                         # 留空=对所有含 score_field 的 repeated_group 逐项打分；填写则只用该组
+      score_field: "de_fen"             # 每项得分字段名（必须存在于评分项表格的 group_fields）
+      weight_field: "dan_xiang_quan_zhong"  # 每项权重字段名（item_weighted 用；无则回退简单平均）
 ```
 
 评分模式说明：
 - `single`：每个评分人对一条记录打一个总分（0-100）。
 - `item_avg`：评分人对每个评分项（`score_field` 所在的 repeated_group 每行）打 0-100 分，汇总为简单平均。
 - `item_weighted`：同上，但按 `weight_field` 加权汇总；无有效权重时回退简单平均。
-- `group` 留空表示对所有含 `score_field` 的 repeated_group 逐项打分；填写则只用该组。
+- `group`：指定“评分项”所在的 repeated_group；留空则覆盖所有含 `score_field` 的 repeated_group。
 
-评分人列表（`reviewers: [{role, weight}]`，有序可增删）由考核定义在管理后台配置。
+评分人列表（`reviewers: [{role, weight}]`，有序可增删）与 A/B/C/D 等级分布（`gradeConfig`）
+由考核定义在管理后台配置，**不属于表单 YAML**；表单只需用 `scoring` 声明“怎么打分”。
+生成后用 `validate_form_yaml.py` 会校验 `scoring`（mode 合法性、score_field/weight_field 是否存在于评分项表格）。
 
 ## 排序与可见性规则（内置）
 
@@ -183,3 +186,5 @@ forms:
 - 信息字段：表头上方的「标签：值」行（如 `部门：设计研究部`、`岗位：职员`、`姓名：董俊杰`）
   自动生成为前置 text 字段（label 去掉冒号，name 转拼音）；`--no-info-fields` 可关闭。
   这类信息行会被表头定位逻辑自动跳过，不会误当表头。
+- 评分检测：若识别到 `得分/评分/分值`（number，min 0 max 100）与 `权重/比例/占比` 数列（考核/绩效类），
+  生成的 YAML 应追加 `scoring:` 声明块（见上文「表单评分声明」）。

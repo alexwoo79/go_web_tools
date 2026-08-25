@@ -55,6 +55,36 @@ python3 excel_to_yaml.py 考核表.xlsx \
 
 解析规则与推断关键字（表头 → 字段）见 `references/yaml-schema.md` 的附录，或直接读 `lib_excel.py`。
 
+## 评分声明（考核类表单可选）
+
+若表单是考核/绩效类（含「考核指标 + 得分 + 权重」的 repeated_group），在生成的 YAML 里追加 `scoring:` 块，
+声明“每个评分人如何打分”。评分引擎只读此配置，改表单不用改评分代码。
+
+```yaml
+scoring:
+  mode: "item_weighted"         # single=每评分人一个总分；item_avg=逐项简单平均；item_weighted=逐项按权重汇总
+  group: ""                     # 留空=所有含 score_field 的 repeated_group 逐项打分；填一个分组名则只用该组
+  score_field: "de_fen"         # 每项得分字段名（须存在于评分项表格 group_fields）
+  weight_field: "dan_xiang_quan_zhong"  # 每项权重字段名（item_weighted 用，无则回退简单平均）
+```
+
+- `mode: single`：每个评分人对一条记录打一个总分（0-100），与表格结构完全解耦。
+- `mode: item_avg / item_weighted`：评分人对每个考核指标逐项打分；`score_field` 是每行得分列，
+  `weight_field` 是该行权重列（`item_weighted` 用）；系统先汇总为该评分人的分，再按评分人权重得到最终分。
+- `group` 留空时对所有含 `score_field` 的 repeated_group 逐项打分（如“重点工作 + 日常任务”都算）；
+  只评某一组就填该组字段名。
+- 评分人、权重、A/B/C/D 等级分布（`reviewers`、`gradeConfig`）在**考核定义页**由管理员配置，**不进表单 YAML**。
+
+结合上方考核表的例子，在 `forms[0]` 下加：
+
+```yaml
+    scoring:
+      mode: item_weighted
+      group: ""
+      score_field: de_fen
+      weight_field: dan_xiang_quan_zhong
+```
+
 ## 自然语言 → 表单 YAML
 
 用户用文字描述需求时（例如「构造一个表单，收集员工周末活动计划调研表」），按以下步骤生成：
@@ -63,6 +93,7 @@ python3 excel_to_yaml.py 考核表.xlsx \
    - 姓名→text、手机/电话→tel、邮箱→email、日期/时间→date/time、金额/数量/分数→number
    - 评价/意见/说明/备注→textarea；有限选项（是/否、类型、活动）→select/radio/checkbox
    - 无法确定选项的列→text；带多个同类明细（如任务列表）→repeated_group
+   - 若属于考核/绩效（要“按指标打分”），再补 `scoring:` 声明块（见上文）
 2. **命名**：`name` 用拼音小写下划线（姓名→xing_ming），`label` 用中文，title/category/status 补全。
 3. **生成 YAML**：直接写出 `forms:` 结构（schema 见 `references/yaml-schema.md`）。
 4. **校验**：`python3 skills/forms-go/scripts/validate_form_yaml.py <文件>.yaml`，
@@ -80,4 +111,6 @@ python3 excel_to_yaml.py 考核表.xlsx \
 - `name` 是表单唯一标识，生成后不可改；输出前和用户确认字段与命名。
 - 字段类型只使用项目支持集合：text、email、tel、number、textarea、select、checkbox、radio、date、time、range，
   以及表格行字段 `repeated_group`（`group_fields` + `default_rows`/`min_rows`/`max_rows`，见 `references/yaml-schema.md`）。
+- 表单级可选键：`weight_sum_total_limit`（表格权重合计上限）、`scoring`（评分声明，见上文），
+  以及动态选项 `options_from`（users/departments/roles）。不要写 `permissions` 等不支持键。
 - 若解析结果明显不合理（如识别错表头），展示推断依据并让用户调整，而不是直接输出。

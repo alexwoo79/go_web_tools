@@ -24,6 +24,7 @@ SUPPORTED_TYPES = {
 STATUSES = {"draft", "published", "archived"}
 OPTION_TYPES = {"select", "checkbox", "radio"}
 OPTIONS_FROM = {"users", "departments", "roles"}
+SCORING_MODES = {"single", "item_avg", "item_weighted"}
 NAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]*$")
 
 
@@ -74,6 +75,57 @@ def validate_field(f, path: str) -> list[str]:
     return errors
 
 
+def validate_scoring(form, path: str) -> list[str]:
+    errors = []
+    sc = form.get("scoring")
+    if sc is None:
+        return errors
+    if not isinstance(sc, dict):
+        return [f"{path} scoring 不是对象"]
+
+    mode = sc.get("mode") or "single"
+    if mode not in SCORING_MODES:
+        errors.append(f"{path} scoring.mode 不支持: {mode!r}（支持 {', '.join(sorted(SCORING_MODES))}）")
+
+    fields = form.get("fields") or []
+    rg_by_name = {}
+    for f in fields:
+        if isinstance(f, dict) and f.get("name") and f.get("type") == "repeated_group":
+            rg_by_name[f["name"]] = f
+
+    group = sc.get("group")
+    if group:
+        if group not in rg_by_name:
+            errors.append(f"{path} scoring.group {group!r} 不是 repeated_group 字段")
+
+    # 仅逐项打分的模式需要 score_field；校验其是否在评分项表格的 group_fields 中
+    if mode in ("item_avg", "item_weighted"):
+        sf = sc.get("score_field") or ""
+        if not sf:
+            errors.append(f"{path} 评分模式 {mode} 需要 score_field")
+        wf = sc.get("weight_field") or ""
+
+        if group:
+            candidates = [rg_by_name[group]] if group in rg_by_name else []
+        else:
+            candidates = [f for f in fields if isinstance(f, dict) and f.get("type") == "repeated_group"]
+        if not candidates:
+            errors.append(f"{path} 找不到用于逐项打分的 repeated_group")
+
+        has_sf, has_wf = False, False
+        for g in candidates:
+            gnames = [gg.get("name") for gg in g.get("group_fields", []) if isinstance(gg, dict)]
+            if sf and sf in gnames:
+                has_sf = True
+            if wf and wf in gnames:
+                has_wf = True
+        if sf and not has_sf:
+            errors.append(f"{path} score_field {sf!r} 不在评分项表格的 group_fields 中")
+        if mode == "item_weighted" and wf and not has_wf:
+            errors.append(f"{path} weight_field {wf!r} 不在评分项表格的 group_fields 中")
+    return errors
+
+
 def validate_form(form, path: str) -> list[str]:
     errors = []
     if not isinstance(form, dict):
@@ -92,6 +144,7 @@ def validate_form(form, path: str) -> list[str]:
         errors.append(f"{path} 缺少 category")
     if form.get("weight_sum_total_limit") is not None and not isinstance(form.get("weight_sum_total_limit"), (int, float)):
         errors.append(f"{path} weight_sum_total_limit 须为数字")
+    errors.extend(validate_scoring(form, path))
 
     fields = form.get("fields")
     if not isinstance(fields, list) or not fields:
