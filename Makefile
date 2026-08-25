@@ -9,7 +9,7 @@ help:
 	@echo "Common targets:"
 	@echo "  make api          Run Go backend only with config.yaml"
 	@echo "  make web          Run Vue frontend dev server"
-	@echo "  make air          Run Go backend with hot reload (air)"
+	@echo "  make air          Run Go hot reload + Vue Vite dev server"
 	@echo "  make dev          Build embedded frontend and run local binary"
 	@echo "  make demo         Run embedded binary against .demo/config.yaml (独立演示库, port 18099)"
 	@echo "  make build        Build local binary with embedded frontend"
@@ -32,7 +32,10 @@ web:
 	cd ./vue-form && npm run dev
 
 air:
-	air -c .air.toml
+	@trap 'kill 0' INT TERM EXIT; \
+		(air -c .air.toml) & \
+		(cd ./vue-form && npm run dev -- --host 127.0.0.1) & \
+		wait
 
 dev:
 	./build.sh

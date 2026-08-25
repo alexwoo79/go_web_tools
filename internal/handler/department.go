@@ -75,8 +75,8 @@ func (h *Handler) UpdateUserDepartmentsHandler(w http.ResponseWriter, r *http.Re
 		jsonResponse(w, http.StatusNotFound, map[string]string{"error": "用户不存在"})
 		return
 	}
-	if user.Role != RoleDivisionLeader && user.Role != RoleTopLeader && user.Role != RoleAdmin {
-		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "仅分管领导/主管领导可设置管理范围"})
+	if user.Role != RoleSeniorLeader && user.Role != RoleDivisionLeader && user.Role != RoleTopLeader && user.Role != RoleAdmin {
+		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "仅部门以上领导可设置管理范围"})
 		return
 	}
 	if err := h.db.SetLeaderDepartments(req.UserID, req.DepartmentIDs); err != nil {

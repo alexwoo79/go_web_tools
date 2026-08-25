@@ -172,10 +172,11 @@ const STATUS_LABELS: Record<string, string> = {
   none: '未填报',
 }
 
-const REVIEW_ROLES = new Set(['dept_head', 'division_leader', 'top_leader', 'admin'])
+const REVIEW_ROLES = new Set(['dept_head', 'senior_leader', 'division_leader', 'top_leader', 'admin'])
 const ROLE_LABELS: Record<string, string> = {
   staff: '职员',
   dept_head: '部门负责人',
+  senior_leader: '部门以上领导',
   division_leader: '分管领导',
   top_leader: '主管领导',
   admin: '管理员',
@@ -185,6 +186,7 @@ const ROLE_LABELS: Record<string, string> = {
 const PARTICIPANT_ROLE_OPTIONS = [
   { value: 'staff', label: '职员' },
   { value: 'dept_head', label: '部门负责人' },
+  { value: 'senior_leader', label: '部门以上领导' },
   { value: 'division_leader', label: '分管领导' },
   { value: 'top_leader', label: '主管领导' },
   { value: 'user', label: '普通用户' },
@@ -192,6 +194,7 @@ const PARTICIPANT_ROLE_OPTIONS = [
 const CHAIN_ROLE_OPTIONS = [
   { value: '', label: '无（跳过）' },
   { value: 'dept_head', label: '部门负责人' },
+  { value: 'senior_leader', label: '部门以上领导' },
   { value: 'division_leader', label: '分管领导' },
   { value: 'top_leader', label: '主管领导' },
 ]
@@ -552,12 +555,43 @@ async function loadPermission() {
     const res = await fetch('/api/assessment/permission-overview')
     const payload = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(payload.error || '加载失败')
-    permission.value = payload
+    permission.value = {
+      summary: {
+        departments: Number(payload.summary?.departments ?? 0),
+        participants: Number(payload.summary?.participants ?? 0),
+        withHead: Number(payload.summary?.withHead ?? 0),
+        divisionLeaders: Number(payload.summary?.divisionLeaders ?? 0),
+        topLeaders: Number(payload.summary?.topLeaders ?? 0),
+        gaps: Number(payload.summary?.gaps ?? 0),
+      },
+      departments: Array.isArray(payload.departments)
+        ? payload.departments.map((d: any) => ({
+            name: String(d?.name ?? ''),
+            participants: Number(d?.participants ?? 0),
+            deptHead: String(d?.deptHead ?? ''),
+            divisionLeaders: Array.isArray(d?.divisionLeaders) ? d.divisionLeaders : [],
+            topLeaders: Array.isArray(d?.topLeaders) ? d.topLeaders : [],
+          }))
+        : [],
+      divisionLeaders: normalizePermissionLeaders(payload.divisionLeaders),
+      topLeaders: normalizePermissionLeaders(payload.topLeaders),
+      gaps: Array.isArray(payload.gaps) ? payload.gaps.map(String) : [],
+    }
   } catch (e: any) {
     error.value = e.message || '加载失败'
   } finally {
     permissionLoading.value = false
   }
+}
+
+function normalizePermissionLeaders(value: unknown): PermissionLeader[] {
+  if (!Array.isArray(value)) return []
+  return value.map((leader: any) => ({
+    username: String(leader?.username ?? ''),
+    role: String(leader?.role ?? ''),
+    departments: Array.isArray(leader?.departments) ? leader.departments.map(String) : [],
+    scopeEmpty: Boolean(leader?.scopeEmpty),
+  }))
 }
 
 function switchTab(t: 'mine' | 'review' | 'results' | 'periods' | 'permission') {

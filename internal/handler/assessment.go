@@ -496,7 +496,7 @@ func (h *Handler) ReviewListHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 分管/主管领导按“管理范围”过滤（未配置时默认全部）
-	if session.Role == RoleDivisionLeader || session.Role == RoleTopLeader {
+	if session.Role == RoleSeniorLeader || session.Role == RoleDivisionLeader || session.Role == RoleTopLeader {
 		if ids := h.leaderManagedDepartments(session.UserID); len(ids) > 0 {
 			allowed := map[string]bool{}
 			for _, id := range ids {
@@ -541,15 +541,15 @@ func (h *Handler) ReviewListHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		items = append(items, map[string]interface{}{
-			"id":         rec.ID,
-			"username":   rec.Username,
-			"department": rec.Department,
-			"formName":   rec.FormName,
-			"formTitle":  title,
-			"status":     rec.Status,
-			"totalScore": rec.TotalScore,
-			"reviewedBy": rec.ReviewedBy,
-			"updatedAt":  rec.UpdatedAt,
+			"id":          rec.ID,
+			"username":    rec.Username,
+			"department":  rec.Department,
+			"formName":    rec.FormName,
+			"formTitle":   title,
+			"status":      rec.Status,
+			"totalScore":  rec.TotalScore,
+			"reviewedBy":  rec.ReviewedBy,
+			"updatedAt":   rec.UpdatedAt,
 			"currentRole": currentRole,
 			"canScore":    canScore,
 		})
@@ -1094,10 +1094,10 @@ func (h *Handler) ListAssessmentPeriodsHandler(w http.ResponseWriter, r *http.Re
 // CreateAssessmentPeriodHandler 管理员：新建考核周期。
 func (h *Handler) CreateAssessmentPeriodHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name             string     `json:"name"`
-		FormName         string     `json:"formName"`
-		ParticipantRoles []string   `json:"participantRoles"`
-		Reviewers        []Reviewer `json:"reviewers"`
+		Name             string      `json:"name"`
+		FormName         string      `json:"formName"`
+		ParticipantRoles []string    `json:"participantRoles"`
+		Reviewers        []Reviewer  `json:"reviewers"`
 		GradeConfig      GradeConfig `json:"gradeConfig"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1132,10 +1132,10 @@ func (h *Handler) UpdateAssessmentPeriodHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	var req struct {
-		Name             string     `json:"name"`
-		FormName         string     `json:"formName"`
-		ParticipantRoles []string   `json:"participantRoles"`
-		Reviewers        []Reviewer `json:"reviewers"`
+		Name             string      `json:"name"`
+		FormName         string      `json:"formName"`
+		ParticipantRoles []string    `json:"participantRoles"`
+		Reviewers        []Reviewer  `json:"reviewers"`
 		GradeConfig      GradeConfig `json:"gradeConfig"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1213,7 +1213,7 @@ func (h *Handler) AssessmentPermissionOverviewHandler(w http.ResponseWriter, r *
 			continue
 		}
 		// 领导的管理范围不受自身部门为空影响，先计算
-		if u.Role == RoleDivisionLeader || u.Role == RoleTopLeader {
+		if u.Role == RoleSeniorLeader || u.Role == RoleDivisionLeader || u.Role == RoleTopLeader {
 			ids, _ := h.db.GetLeaderDepartments(u.ID)
 			names := make([]string, 0, len(ids))
 			for _, id := range ids {
@@ -1227,7 +1227,7 @@ func (h *Handler) AssessmentPermissionOverviewHandler(w http.ResponseWriter, r *
 		if u.Role == RoleDeptHead && strings.TrimSpace(u.Department) != "" && deptHead[u.Department] == "" {
 			deptHead[u.Department] = u.Username
 		}
-		if u.Role != RoleDivisionLeader && u.Role != RoleTopLeader && strings.TrimSpace(u.Department) == "" {
+		if u.Role != RoleSeniorLeader && u.Role != RoleDivisionLeader && u.Role != RoleTopLeader && strings.TrimSpace(u.Department) == "" {
 			noDeptStaff = append(noDeptStaff, u.Username)
 			continue
 		}
@@ -1251,6 +1251,7 @@ func (h *Handler) AssessmentPermissionOverviewHandler(w http.ResponseWriter, r *
 		}
 		return out
 	}
+	seniorLeaders := leaderFor(RoleSeniorLeader)
 	divisionLeaders := leaderFor(RoleDivisionLeader)
 	topLeaders := leaderFor(RoleTopLeader)
 
@@ -1273,6 +1274,9 @@ func (h *Handler) AssessmentPermissionOverviewHandler(w http.ResponseWriter, r *
 		div := make([]string, 0)
 		top := make([]string, 0)
 		for _, u := range users {
+			if u.Role == RoleSeniorLeader && coverDept(u.ID, name) {
+				div = append(div, u.Username)
+			}
 			if u.Role == RoleDivisionLeader && coverDept(u.ID, name) {
 				div = append(div, u.Username)
 			}
@@ -1296,7 +1300,7 @@ func (h *Handler) AssessmentPermissionOverviewHandler(w http.ResponseWriter, r *
 		gaps = append(gaps, "以下员工未设置部门，无法被部门负责人评分："+strings.Join(noDeptStaff, "、"))
 	}
 	for _, u := range users {
-		if (u.Role == RoleDivisionLeader || u.Role == RoleTopLeader) && leaderScopeEmpty[u.ID] {
+		if (u.Role == RoleSeniorLeader || u.Role == RoleDivisionLeader || u.Role == RoleTopLeader) && leaderScopeEmpty[u.ID] {
 			gaps = append(gaps, "领导「"+u.Username+"」未设置管理范围（当前覆盖全部部门）")
 		}
 	}
@@ -1315,7 +1319,7 @@ func (h *Handler) AssessmentPermissionOverviewHandler(w http.ResponseWriter, r *
 			"departments":     len(depts),
 			"participants":    total,
 			"withHead":        withHead,
-			"divisionLeaders": len(divisionLeaders),
+			"divisionLeaders": len(divisionLeaders) + len(seniorLeaders),
 			"topLeaders":      len(topLeaders),
 			"gaps":            len(gaps),
 		},

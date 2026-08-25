@@ -12,6 +12,7 @@ export const ROLE_LABELS: Record<string, string> = {
   user: '普通用户',
   staff: '职员',
   dept_head: '部门负责人',
+  senior_leader: '部门以上领导',
   division_leader: '分管领导',
   top_leader: '主管领导',
 }

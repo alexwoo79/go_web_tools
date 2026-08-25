@@ -57,6 +57,13 @@ type Department struct {
 	CreatedAt string
 }
 
+type RoleDefinition struct {
+	Code        string `json:"code"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+	Builtin     bool   `json:"builtin"`
+}
+
 type ShareLinkRecord struct {
 	Token     string
 	FormName  string
@@ -551,6 +558,86 @@ func (d *Database) EnsureUserTable() error {
 		}
 	}
 	return nil
+}
+
+func (d *Database) EnsureRoleTable() error {
+	if _, err := d.db.Exec(`CREATE TABLE IF NOT EXISTS role_definitions (
+		code TEXT PRIMARY KEY,
+		label TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		builtin INTEGER NOT NULL DEFAULT 0
+	)`); err != nil {
+		return err
+	}
+	seeds := []RoleDefinition{
+		{"user", "普通用户", "可填写有权限访问的表单。", true},
+		{"admin", "管理员", "管理表单、用户、部门和系统设置。", true},
+		{"staff", "职员", "普通业务人员，参与日常填报。", true},
+		{"dept_head", "部门负责人", "负责本部门员工及部门内考核流程。", true},
+		{"senior_leader", "部门以上领导", "可配置多个部门的管理范围。", true},
+		{"division_leader", "分管领导", "负责所辖多个部门的分管与评分。", true},
+		{"top_leader", "主管领导", "负责更高层级的部门管理与评分。", true},
+	}
+	for _, role := range seeds {
+		if _, err := d.db.Exec(`INSERT OR IGNORE INTO role_definitions (code, label, description, builtin) VALUES (?, ?, ?, 1)`, role.Code, role.Label, role.Description); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Database) ListRoleDefinitions() ([]RoleDefinition, error) {
+	rows, err := d.db.Query(`SELECT code, label, description, builtin FROM role_definitions ORDER BY builtin DESC, code`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]RoleDefinition, 0)
+	for rows.Next() {
+		var role RoleDefinition
+		var builtin int
+		if err := rows.Scan(&role.Code, &role.Label, &role.Description, &builtin); err != nil {
+			return nil, err
+		}
+		role.Builtin = builtin != 0
+		out = append(out, role)
+	}
+	return out, rows.Err()
+}
+
+func (d *Database) RoleExists(code string) (bool, error) {
+	var n int
+	err := d.db.QueryRow(`SELECT COUNT(1) FROM role_definitions WHERE code = ?`, code).Scan(&n)
+	return n > 0, err
+}
+
+func (d *Database) CreateRoleDefinition(role RoleDefinition) error {
+	_, err := d.db.Exec(`INSERT INTO role_definitions (code, label, description, builtin) VALUES (?, ?, ?, 0)`, role.Code, role.Label, role.Description)
+	return err
+}
+
+func (d *Database) UpdateRoleDefinition(code, label, description string) error {
+	_, err := d.db.Exec(`UPDATE role_definitions SET label = ?, description = ? WHERE code = ? AND builtin = 0`, label, description, code)
+	return err
+}
+
+func (d *Database) DeleteRoleDefinition(code string) error {
+	var builtin int
+	if err := d.db.QueryRow(`SELECT builtin FROM role_definitions WHERE code = ?`, code).Scan(&builtin); err != nil {
+		return err
+	}
+	if builtin != 0 {
+		return fmt.Errorf("内置角色不可删除")
+	}
+	var users int
+	if err := d.db.QueryRow(`SELECT COUNT(1) FROM users WHERE role = ?`, code).Scan(&users); err != nil {
+		return err
+	}
+	if users > 0 {
+		return fmt.Errorf("角色仍被用户使用")
+	}
+	_, err := d.db.Exec(`DELETE FROM role_definitions WHERE code = ?`, code)
+	return err
 }
 
 // EnsureAssessmentTables 创建考核模块所需表。

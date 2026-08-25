@@ -45,6 +45,7 @@ const (
 	RoleUser           = "user"            // 普通用户（注册默认）
 	RoleStaff          = "staff"           // 职员
 	RoleDeptHead       = "dept_head"       // 部门负责人
+	RoleSeniorLeader   = "senior_leader"   // 部门以上领导
 	RoleDivisionLeader = "division_leader" // 分管领导
 	RoleTopLeader      = "top_leader"      // 主管领导
 )
@@ -55,6 +56,7 @@ var RoleLabels = map[string]string{
 	RoleUser:           "普通用户",
 	RoleStaff:          "职员",
 	RoleDeptHead:       "部门负责人",
+	RoleSeniorLeader:   "部门以上领导",
 	RoleDivisionLeader: "分管领导",
 	RoleTopLeader:      "主管领导",
 }
@@ -63,6 +65,11 @@ var RoleLabels = map[string]string{
 func isValidRole(role string) bool {
 	_, ok := RoleLabels[role]
 	return ok
+}
+
+func (h *Handler) validRole(role string) bool {
+	ok, err := h.db.RoleExists(strings.TrimSpace(role))
+	return err == nil && ok
 }
 
 // Session 会话管理
@@ -177,9 +184,9 @@ type FormInfo struct {
 	// 表单级约束：所有 repeated_group 权重合计上限
 	WeightSumTotalLimit *float64
 	// 表单评分声明（可选），驱动“本表单如何被评分”
-	Scoring         *ScoringInfo
-	FileModTime         int64  // 配置文件修改时间戳
-	ConfigSource        string // 来源配置文件名，空 = 主配置
+	Scoring      *ScoringInfo
+	FileModTime  int64  // 配置文件修改时间戳
+	ConfigSource string // 来源配置文件名，空 = 主配置
 }
 
 // ScoringInfo 表单评分声明。
@@ -227,6 +234,9 @@ func New(db *models.Database, formConfigs []FormInfo, configPath string, reloadF
 
 	if err := h.db.EnsureUserTable(); err != nil {
 		panic("初始化用户表失败: " + err.Error())
+	}
+	if err := h.db.EnsureRoleTable(); err != nil {
+		panic("初始化角色表失败: " + err.Error())
 	}
 
 	if err := h.db.EnsureShareLinkTable(); err != nil {
@@ -1884,7 +1894,7 @@ func (h *Handler) UpdateUserRoleHandler(w http.ResponseWriter, r *http.Request) 
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "请求格式错误"})
 		return
 	}
-	if !isValidRole(req.Role) {
+	if !h.validRole(req.Role) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "角色非法"})
 		return
 	}
@@ -1973,7 +1983,7 @@ func (h *Handler) CreateUserByAdminHandler(w http.ResponseWriter, r *http.Reques
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "密码至少 6 位"})
 		return
 	}
-	if !isValidRole(role) {
+	if !h.validRole(role) {
 		jsonResponse(w, http.StatusBadRequest, map[string]string{"error": "角色非法"})
 		return
 	}
@@ -2107,7 +2117,7 @@ func (h *Handler) ImportUsersHandler(w http.ResponseWriter, r *http.Request) {
 			failed = append(failed, FailItem{username, "密码至少6位"})
 			continue
 		}
-		if !isValidRole(role) {
+		if !h.validRole(role) {
 			failed = append(failed, FailItem{username, "角色不合法"})
 			continue
 		}
@@ -2126,7 +2136,7 @@ func (h *Handler) ImportUsersHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		// 领导：设置管理范围（自动创建缺失的部门，名称为空视为不设置）
-		if (role == RoleDivisionLeader || role == RoleTopLeader) && len(u.ManagedDepartments) > 0 {
+		if (role == RoleSeniorLeader || role == RoleDivisionLeader || role == RoleTopLeader) && len(u.ManagedDepartments) > 0 {
 			deptIDByName := map[string]int64{}
 			if depts, derr := h.db.ListDepartments(); derr == nil {
 				for _, d := range depts {
