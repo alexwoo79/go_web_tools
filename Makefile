@@ -1,8 +1,9 @@
 SHELL := /bin/bash
 
 CONFIG ?= ./config.yaml
+DEMO_PORT ?= 18099
 
-.PHONY: help deps api web dev air build package windows all test clean docker-build docker-up docker-down
+.PHONY: help deps api web dev demo air build package windows all test clean docker-build docker-up docker-down
 
 help:
 	@echo "Common targets:"
@@ -10,6 +11,7 @@ help:
 	@echo "  make web          Run Vue frontend dev server"
 	@echo "  make air          Run Go backend with hot reload (air)"
 	@echo "  make dev          Build embedded frontend and run local binary"
+	@echo "  make demo         Run embedded binary against .demo/config.yaml (独立演示库, port 18099)"
 	@echo "  make build        Build local binary with embedded frontend"
 	@echo "  make package      Same as make build"
 	@echo "  make windows      Build Windows binary with embedded frontend"
@@ -35,6 +37,11 @@ air:
 dev:
 	./build.sh
 	./bin/go-web --config ./bin/config.yaml
+
+demo:
+	@test -d .demo || (echo "演示目录 .demo 不存在，请先创建 .demo/config.yaml（数据库用临时路径，includes 指向演示表单，如 .demo/jixiao_2026q2_table.yaml）" && exit 1)
+	@test -x ./bin/go-web || $(MAKE) build
+	./bin/go-web --config .demo/config.yaml --port $(DEMO_PORT)
 
 build:
 	./build.sh

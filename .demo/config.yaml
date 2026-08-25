@@ -1,0 +1,10 @@
+server:
+  port: 18099
+  host: "127.0.0.1"
+
+database:
+  path: "/private/tmp/formsgo-demo.db"
+  type: "sqlite"
+
+includes:
+  - "jixiao_2026q2_table.yaml"
