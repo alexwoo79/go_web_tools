@@ -11,3 +11,7 @@ bin/
 .vscode/
 *.swp
 *.swo
+
+# macOS metadata
+.DS_Store
+*.DS_Store
