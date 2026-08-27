@@ -163,6 +163,9 @@ type Handler struct {
 	sessionMgr *SessionManager
 	configPath string
 	reloadFn   func() ([]FormInfo, error)
+	// shareURLBase 返回分享链接应使用的基础地址（如 http://192.168.1.5:8080）。
+	// 桌面端会注入额外 Web 监听的实际地址；为空时按请求 Host 推断（Web 版原逻辑）。
+	shareURLBase func() string
 }
 
 type FormInfo struct {
@@ -216,6 +219,12 @@ type FieldInfo struct {
 	// 组内权重合计约束
 	WeightSumField string
 	WeightSumLimit *float64
+}
+
+// SetShareURLBase 设置分享链接基础地址提供函数（桌面端注入）。
+// 返回空串时 buildShareLinkURL 回退到按请求 Host 推断。
+func (h *Handler) SetShareURLBase(fn func() string) {
+	h.shareURLBase = fn
 }
 
 func New(db *models.Database, formConfigs []FormInfo, configPath string, reloadFn func() ([]FormInfo, error)) *Handler {
@@ -1043,6 +1052,17 @@ func buildShareURL(r *http.Request, token string) string {
 	return fmt.Sprintf("%s://%s/s/%s", getRequestScheme(r), host, token)
 }
 
+// buildShareLinkURL 生成分享链接：优先使用 h.shareURLBase（桌面端额外监听地址），
+// 否则按请求 Host 推断。
+func (h *Handler) buildShareLinkURL(r *http.Request, token string) string {
+	if h.shareURLBase != nil {
+		if base := h.shareURLBase(); base != "" {
+			return strings.TrimRight(base, "/") + "/s/" + token
+		}
+	}
+	return buildShareURL(r, token)
+}
+
 func (h *Handler) resolveFormByShareToken(token string) (FormInfo, bool) {
 	rec, err := h.db.GetShareLink(token)
 	if err != nil || rec == nil {
@@ -1092,7 +1112,7 @@ func (h *Handler) CreateShareLinkHandler(w http.ResponseWriter, r *http.Request)
 	jsonResponse(w, http.StatusCreated, map[string]interface{}{
 		"formName": fi.Name,
 		"title":    fi.Title,
-		"url":      buildShareURL(r, token),
+		"url":      h.buildShareLinkURL(r, token),
 		"token":    token,
 		"expireAt": fi.ExpireAt,
 	})

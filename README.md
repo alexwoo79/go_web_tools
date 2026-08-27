@@ -29,6 +29,50 @@ make demo      # 使用 .demo/config.yaml 启动独立演示库
 
 默认访问地址是 `http://localhost:8080`。
 
+## 桌面应用（Wails）
+
+项目同时提供 Wails 桌面端：同一套 Go 后端 + Vue 前端，打包为原生窗口应用，
+无需手动启动服务或在浏览器打开。
+
+```bash
+make wails-dev           # 桌面端开发（Vite 热重载，后端固定 127.0.0.1:8080）
+make wails-build         # 构建当前平台桌面应用 → build/bin/
+make wails-build-mac     # 构建 macOS 通用 .app
+make wails-package-win   # 构建 Windows NSIS 安装包（需 NSIS）
+make wails-install-tools # 安装 Wails CLI（已安装则跳过）
+```
+
+说明：
+
+- 桌面端代码在仓库根目录：`main.go`（生产）/ `main_dev.go`（`wails dev` 的 `dev` 构建标签）、
+  `app.go`（绑定与系统菜单）、`redirector/`（首屏跳转页）、`wails.json`。
+- 生产模式后端监听 `127.0.0.1` 随机端口（避免占用冲突），窗口先加载
+  `redirector` 页、通过 Go 绑定拿到服务地址后跳转到 `http://127.0.0.1:<port>/`。
+  这样 Cookie / 会话 / CSV 导出都运行在真实 HTTP 源上，规避 macOS
+  自定义 scheme（`wails://`）不支持 Cookie 的已知问题。
+- **可同时启动 Web 服务**：桌面窗口使用回环地址的同时，应用会按
+  `config.yaml` 的 `server.host:port` 额外启动一个 Web 监听，**默认监听
+  `0.0.0.0`（局域网可访问）**；局域网电脑可通过 `http://<本机IP>:<端口>` 打开。
+  如需仅本机访问，用 `GO_FORM_WEB_ADDR=127.0.0.1:<port>` 启动应用（优先级最高）。
+  两个监听共享同一路由与会话，Web 端与桌面端数据完全一致。
+- **登录页可随时启停**：登录页底部有「Web 服务」卡片，无需登录即可一键
+  启动/停止对外 Web 监听，并显示当前地址（局域网地址可直接点击打开）。
+  控制接口为 `/api/desktop/web-service`（GET 状态 / POST 启动 / DELETE 停止，
+  无需登录；该接口只控制额外监听，不涉及数据访问）。**该功能仅限本机使用**：
+  对外（局域网）监听会屏蔽 `/api/desktop/*`（返回 403），局域网页面也不会显示按钮，
+  因此连线用户无法通过网页关闭本机的 Web 服务。
+- **端口被占用自动换端口**：启动 Web 服务时若目标端口（如 `8080`）已被占用，
+  会自动改用同一主机上的空闲端口（日志会打印实际地址，登录页卡片同步显示）。
+- **分享链接使用真实监听地址**：桌面端生成专用链接时不再用请求 Host 推断，
+  而是取对外 Web 监听的**实际地址**：局域网开放时返回
+  `http://<本机IP>:<端口>/s/<token>`（局域网电脑可直接打开）；未开放或未启动时
+  返回本机回环地址，管理后台弹窗会提示如何开放。
+- 配置解析优先级：`GO_FORM_WEB_CONFIG` 环境变量 > 可执行文件目录下 `config.yaml` >
+  当前目录 `config.yaml` > 用户配置目录（如 `~/Library/Application Support/go-form-web`，
+  首次运行自动写入内嵌默认配置）。数据库与 `data/` 相对配置所在目录生成。
+- 构建桌面端前会先跑 `scripts/sync_frontend.sh` 把 `vue-form/dist` 同步到
+  `ui/frontend`，保证内嵌前端是最新构建。
+
 ## 配置概览
 
 主配置通常使用 `config.yaml`，并通过 `includes` 合并独立表单文件：
@@ -95,6 +139,9 @@ forms:
 ```
 go_web_tools/
 ├── cmd/server            # 服务入口
+├── main.go / app.go      # Wails 桌面端入口
+├── wails.json / build/   # Wails 配置与打包资源
+├── redirector/           # 桌面端首屏跳转页
 ├── internal              # 配置、处理器、模型
 ├── ui                    # 模板和嵌入式前端资源
 ├── vue-form              # Vue 3 前端源码

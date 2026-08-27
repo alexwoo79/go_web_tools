@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "go-form-desktop",
+  "outputfilename": "go-form",
+  "frontend:dir": "vue-form",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "go_form_web-vue",
+    "email": ""
+  },
+  "info": {
+    "productName": "Go 表单系统",
+    "productVersion": "1.0.0",
+    "description": "YAML 驱动的表单收集、绩效考核与数据管理桌面应用",
+    "comments": "基于 Wails + Vue3 + Go + SQLite",
+    "copyright": "go_form_web-vue"
+  }
+}

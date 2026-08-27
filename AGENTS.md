@@ -14,6 +14,42 @@ make docker-up  # docker compose 部署
 ./release.sh    # 打 tag + 发布 GitHub Release
 ```
 
+## Wails 桌面端
+
+- 仓库根目录即 Wails 桌面端入口：`main.go`（生产，`//go:build !dev`）、
+  `main_dev.go`（开发，`//go:build dev`，由 `wails dev` 以 `-tags dev` 编译）、
+  `app.go`（绑定与系统菜单）、`redirector/index.html`（生产首屏跳转页）、`wails.json`、`build/`。
+- 常用命令：`make wails-dev`（Vite 热重载，后端固定 127.0.0.1:8080）、
+  `make wails-build`（构建桌面应用，构建前经 `scripts/sync_frontend.sh` 把
+  `vue-form/dist` 同步到 `ui/frontend` 内嵌目录）。
+- 后端逻辑已抽到 `internal/app`：Web 服务（`cmd/server`）与桌面端共用
+  `app.New` + `app.Server.Start/Shutdown`，不要分别维护两套初始化。
+- 生产模式后端监听 `127.0.0.1` 随机端口，窗口先加载 `redirector` 页，
+  通过绑定 `App.GetServerURL()` 拿到地址后跳转到 `http://127.0.0.1:<port>/`。
+  **原因**：macOS 生产构建的 `wails://` 自定义 scheme 不支持 Cookie，跳转到真实
+  HTTP 源后会话/导出与 Web 版一致。
+- 桌面端会按 `config.yaml` 的 `server.host:port` **同时启动对外 Web 服务**
+  （`app.Server.StartExtra`，与窗口监听共享路由/会话）：**默认监听 `0.0.0.0`
+  开放局域网**——`DesiredWebListenAddr` 会把回环主机（localhost/127.0.0.1）
+  自动转为 `0.0.0.0`；如需仅本机，用 `GO_FORM_WEB_ADDR=127.0.0.1:<port>`
+  显式覆盖。目标端口被占用时 `StartExtra` 会**自动改用同一主机的空闲端口**
+  （仅 `syscall.EADDRINUSE` 触发回退），实际地址见日志/状态接口。
+  `cmd/server` 只启动单个监听，桌面端是多监听模式。
+- 登录页（`vue-form/src/views/LoginView.vue`）底部有「Web 服务」启停卡片（无需登录），
+  调 `/api/desktop/web-service`（GET/POST/DELETE，**无需登录**，只控制额外监听）；后端实现为
+  `app.Server` 的 `WebServiceStatus/StartWebService/StopWebService`（实现
+  `config.WebServiceController`），路由注册在 `internal/config/router.go`，
+  必须在 SPA `PathPrefix` 兜底之前（gorilla/mux 先注册者优先）。
+  **该控制仅限本机**：对外（局域网）监听用 `app.Server.lanHandler()` 包装路由，
+  屏蔽 `/api/desktop/*`（403）；前端用 `window.location.hostname` 判断非本机时
+  隐藏按钮且不请求。Web 版（cmd/server）不注册该接口。
+- 分享链接（`/api/admin/share-links`）桌面端由 `handler.Handler.SetShareURLBase`
+  + `app.Server.shareBaseURL` 提供基础地址：优先额外 Web 监听的实际地址
+  （局域网地址 > 实际监听地址），未启动时回退窗口主监听回环地址；Web 版不注入，
+  保持按请求 Host 推断。
+- 桌面配置解析优先级：`GO_FORM_WEB_CONFIG` > 可执行文件目录 `config.yaml` >
+  当前目录 `config.yaml` > 用户配置目录（首次运行自动写入内嵌的根目录 `*.yaml`）。
+
 ## 代码结构
 
 - `cmd/server/main.go`：入口，加载配置、建表、启动 HTTP。

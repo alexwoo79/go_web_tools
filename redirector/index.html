@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Go 表单系统 - 启动中</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: #334155;
+    }
+    .box { text-align: center; }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 18px;
+      border: 4px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hint { font-size: 13px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <div>正在启动 Go 表单系统…</div>
+    <div class="hint" id="hint" style="display:none">启动较慢？请查看终端日志</div>
+  </div>
+  <script>
+    // 生产环境：Wails 窗口先加载本页（wails:// 自定义 scheme），
+    // 通过 Go 绑定拿到本机 HTTP 服务地址后跳转过去。
+    // 这样 Cookie / Session / 导出都跑在真实 HTTP 源上，规避 macOS 自定义 scheme 不支持 Cookie 的问题。
+    var attempts = 0
+
+    function showHint() {
+      document.getElementById('hint').style.display = 'block'
+    }
+
+    function bootstrap() {
+      attempts++
+      try {
+        var api = window.go && window.go.main && window.go.main.App
+        if (api && typeof api.GetServerURL === 'function') {
+          api.GetServerURL().then(function (url) {
+            if (url) {
+              window.location.replace(url)
+            } else {
+              setTimeout(bootstrap, 300)
+            }
+          }).catch(function () {
+            setTimeout(bootstrap, 500)
+          })
+        } else {
+          setTimeout(bootstrap, 300)
+        }
+      } catch (e) {
+        setTimeout(bootstrap, 500)
+      }
+      if (attempts > 20) showHint()
+    }
+
+    bootstrap()
+  </script>
+</body>
+</html>

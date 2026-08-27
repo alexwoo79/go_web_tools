@@ -61,6 +61,17 @@ const shareFormTitle = ref('')
 const generatedShareURL = ref('')
 const generatedShareExpireAt = ref('')
 const shareCopied = ref(false)
+
+const shareURLIsLocal = computed(() => {
+  const url = generatedShareURL.value
+  if (!url) return false
+  try {
+    const host = new URL(url).hostname
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1'
+  } catch {
+    return false
+  }
+})
 const showEditModal = ref(false)
 const editLoading = ref(false)
 const editSaving = ref(false)
@@ -597,6 +608,11 @@ async function deleteForm(form: FormStat) {
             <div v-else class="share-body">
               <p class="share-tip">该链接可让用户直接填写当前表单，无需进入表单列表。</p>
               <div class="share-link-box">{{ generatedShareURL }}</div>
+              <p v-if="shareURLIsLocal" class="share-local-hint">
+                提示：该链接为本机回环地址，仅当前电脑可打开。若需让局域网用户访问，
+                请确认已在登录页启动「Web 服务」（默认监听 0.0.0.0 开放局域网），
+                且未通过 GO_FORM_WEB_ADDR 强制为仅本机访问。
+              </p>
               <p class="share-expire">表单截止：{{ generatedShareExpireAt || '长期有效' }}</p>
               <div class="share-actions">
                 <button class="btn-share-copy" @click="copyShareLink">复制链接</button>
@@ -1084,6 +1100,17 @@ tr:hover td { background: #f9fbff; }
   margin: 0;
   font-size: .8rem;
   color: #65758f;
+}
+
+.share-local-hint {
+  margin: .5rem 0 0;
+  font-size: .8rem;
+  line-height: 1.55;
+  color: #92600a;
+  background: var(--bg-soft-amber);
+  border: 1px solid rgba(214, 158, 46, .35);
+  border-radius: 8px;
+  padding: .5rem .65rem;
 }
 
 .share-actions {

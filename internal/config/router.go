@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"go-web/internal/handler"
 	"go-web/ui"
 	"io/fs"
@@ -11,6 +12,28 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+// WebServiceStatus 描述桌面端对外 Web 服务（额外监听）的当前状态。
+type WebServiceStatus struct {
+	Available  bool   `json:"available"`   // 当前运行环境是否支持启停（仅桌面端为 true）
+	Running    bool   `json:"running"`     // 额外 Web 监听是否正在运行
+	Addr       string `json:"addr"`        // 实际监听地址，如 127.0.0.1:8080
+	LANAddr    string `json:"lan_addr"`    // 局域网访问地址（未开放时为 ""）
+	Configured string `json:"configured"`  // 配置/期望的监听地址
+}
+
+// WebServiceController 桌面端对外 Web 服务控制器（由 internal/app.Server 实现）。
+type WebServiceController interface {
+	WebServiceStatus() WebServiceStatus
+	StartWebService() (WebServiceStatus, error)
+	StopWebService() (WebServiceStatus, error)
+}
+
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
 
 // spaHandler 处理 Vue SPA：优先返回静态资源，不存在时回退到 index.html。
 type spaHandler struct {
@@ -83,7 +106,9 @@ func (s *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(s.indexHTML)
 }
 
-func NewRouter(h *handler.Handler) *mux.Router {
+// NewRouter 组装应用路由。wsc 非空时额外注册桌面端 Web 服务启停接口
+// （/api/desktop/web-service，管理员权限）。
+func NewRouter(h *handler.Handler, wsc ...WebServiceController) *mux.Router {
 	r := mux.NewRouter()
 	spa := &spaHandler{}
 
@@ -144,12 +169,46 @@ func NewRouter(h *handler.Handler) *mux.Router {
 	r.HandleFunc("/api/public/forms/{token}", h.PublicFormPageHandler).Methods("GET")
 	r.HandleFunc("/api/public/submit/{token}", h.PublicSubmitHandler).Methods("POST")
 
+	// 桌面端：对外 Web 服务启停（必须在 PathPrefix 兜底路由之前注册）
+	// 无需登录：该按钮放在登录页，且仅在桌面端注册；接口只控制额外监听，
+	// 不涉及数据访问（服务未开启时仅本机可达）。
+	if len(wsc) > 0 && wsc[0] != nil {
+		controller := wsc[0]
+		r.HandleFunc("/api/desktop/web-service", func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				writeJSON(w, http.StatusOK, controller.WebServiceStatus())
+			case http.MethodPost:
+				status, err := controller.StartWebService()
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "启动 Web 服务失败: " + err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, status)
+			case http.MethodDelete:
+				status, err := controller.StopWebService()
+				if err != nil {
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "停止 Web 服务失败: " + err.Error()})
+					return
+				}
+				writeJSON(w, http.StatusOK, status)
+			default:
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "不支持的方法"})
+			}
+		}).Methods(http.MethodGet, http.MethodPost, http.MethodDelete)
+	}
+
 	// 未匹配的 /api/* 返回 JSON 404（避免被 SPA 兜底成 index.html）
 	r.PathPrefix("/api/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":"接口不存在"}`))
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "接口不存在"})
 	})
+
+	// 健康检查端点。注意：必须注册在 PathPrefix("/") 捕获路由之前，
+	// 否则 gorilla/mux 会优先命中 SPA 兜底（先注册的等价路由优先）。
+	r.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	}).Methods(http.MethodGet)
 
 	// 所有其他路由由 Vue SPA 处理
 	r.PathPrefix("/").Handler(spa)

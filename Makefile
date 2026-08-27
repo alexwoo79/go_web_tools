@@ -3,7 +3,8 @@ SHELL := /bin/bash
 CONFIG ?= ./config.yaml
 DEMO_PORT ?= 18099
 
-.PHONY: help deps api web dev demo air build package windows all test clean docker-build docker-up docker-down
+.PHONY: help deps api web dev demo air build package windows all test clean docker-build docker-up docker-down \
+	wails-dev wails-build wails-build-mac wails-package-win wails-install-tools
 
 help:
 	@echo "Common targets:"
@@ -21,6 +22,13 @@ help:
 	@echo "  make docker-up    Start Docker service"
 	@echo "  make docker-down  Stop Docker service"
 	@echo "  make release       Create GitHub Release with build artifacts"
+	@echo ""
+	@echo "Wails 桌面端:"
+	@echo "  make wails-dev          Wails 桌面端开发模式（Vite 热重载 + 后端 8080）"
+	@echo "  make wails-build        构建当前平台桌面应用（build/bin/）"
+	@echo "  make wails-build-mac    构建 macOS 通用 .app"
+	@echo "  make wails-package-win  构建 Windows NSIS 安装包"
+	@echo "  make wails-install-tools 安装 Wails CLI"
 
 deps:
 	cd ./vue-form && npm ci
@@ -74,3 +82,26 @@ docker-down:
 
 release:
 	./release.sh
+
+# ============================================================
+# Wails 桌面端（将 Web 表单系统打包为桌面应用）
+# ============================================================
+wails-dev: ## Wails 桌面端开发（Vite 热重载 + 后端 127.0.0.1:8080）
+	@echo "[wails] 启动 Wails 开发模式..."
+	wails dev
+
+wails-build: ## 构建当前平台桌面应用
+	./scripts/sync_frontend.sh
+	wails build
+
+wails-build-mac: ## 构建 macOS 通用 .app
+	./scripts/sync_frontend.sh
+	wails build -platform darwin/universal
+
+wails-package-win: ## 构建 Windows NSIS 安装包
+	./scripts/sync_frontend.sh
+	wails build -platform windows/amd64 -nsis
+
+wails-install-tools: ## 安装 Wails CLI
+	@command -v wails >/dev/null 2>&1 || go install github.com/wailsapp/wails/v2/cmd/wails@latest
+	@wails version

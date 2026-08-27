@@ -5,6 +5,11 @@ data.db
 
 # Generated files
 bin/
+build/bin/
+
+# Wails 桌面端生成物
+vue-form/wailsjs/
+vue-form/package.json.md5
 
 # IDE files
 .idea/

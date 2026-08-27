@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+
+interface WebServiceStatus {
+  available: boolean
+  running: boolean
+  addr: string
+  lan_addr: string
+  configured: string
+}
 
 const username = ref('')
 const password = ref('')
@@ -9,6 +17,58 @@ const error = ref('')
 const loading = ref(false)
 const router = useRouter()
 const auth = useAuthStore()
+
+const ws = ref<WebServiceStatus | null>(null)
+const wsBusy = ref(false)
+const wsError = ref('')
+
+// 仅本机（桌面窗口 127.0.0.1）显示 Web 服务启停按钮；局域网页面隐藏
+const isLocalPage =
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '::1'
+
+async function refreshWebService() {
+  if (!isLocalPage) {
+    ws.value = null
+    return
+  }
+  try {
+    const res = await fetch('/api/desktop/web-service')
+    if (!res.ok) {
+      ws.value = null
+      return
+    }
+    const data: WebServiceStatus = await res.json()
+    // 仅桌面端环境显示控制按钮
+    ws.value = data.available ? data : null
+  } catch {
+    ws.value = null
+  }
+}
+
+async function toggleWebService() {
+  if (!ws.value || wsBusy.value) return
+  wsBusy.value = true
+  wsError.value = ''
+  try {
+    const res = await fetch('/api/desktop/web-service', {
+      method: ws.value.running ? 'DELETE' : 'POST',
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      wsError.value = (data && data.error) || '操作失败，请查看后端日志'
+      return
+    }
+    ws.value = data
+  } catch (e: any) {
+    wsError.value = e?.message || '网络错误'
+  } finally {
+    wsBusy.value = false
+  }
+}
+
+onMounted(refreshWebService)
 
 async function login() {
   error.value = ''
@@ -59,6 +119,33 @@ async function login() {
         没有账号？
         <a href="/register" @click.prevent="router.push('/register')">去注册</a>
       </p>
+
+      <div v-if="isLocalPage && ws" class="ws-divider"></div>
+      <div v-if="isLocalPage && ws" class="web-service">
+        <div class="ws-head">
+          <span class="ws-dot" :class="ws.running ? 'on' : 'off'"></span>
+          <span class="ws-title">Web 服务</span>
+        </div>
+        <p class="ws-desc">
+          <template v-if="ws.running">
+            运行中 ·
+            <a
+              v-if="ws.lan_addr"
+              :href="ws.lan_addr"
+              target="_blank"
+              rel="noopener"
+              class="ws-link"
+            >{{ ws.lan_addr }}</a>
+            <span v-else class="ws-addr">{{ ws.addr }}</span>
+            <span class="ws-tag">{{ ws.lan_addr ? '局域网可访问' : '仅本机' }}</span>
+          </template>
+          <template v-else>未启动</template>
+        </p>
+        <p v-if="wsError" class="ws-error">{{ wsError }}</p>
+        <button type="button" class="ws-btn" :disabled="wsBusy" @click="toggleWebService">
+          {{ wsBusy ? '处理中…' : ws.running ? '停止 Web 服务' : '启动 Web 服务' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -134,4 +221,94 @@ button:disabled { opacity: .6; cursor: not-allowed; }
   color: var(--brand-600);
   text-decoration: none;
 }
+
+.ws-divider {
+  height: 1px;
+  background: #e4e8f2;
+  margin: 1.2rem 0 .9rem;
+}
+
+.web-service {
+  text-align: left;
+}
+
+.ws-head {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-bottom: .35rem;
+}
+
+.ws-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.ws-dot.on {
+  background: var(--status-success);
+  box-shadow: 0 0 0 3px rgba(47, 159, 99, .16);
+}
+
+.ws-dot.off {
+  background: var(--text-muted);
+  box-shadow: 0 0 0 3px rgba(138, 146, 166, .14);
+}
+
+.ws-title {
+  font-size: .9rem;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.ws-desc {
+  font-size: .8rem;
+  color: #7a869f;
+  margin: 0 0 .65rem;
+  word-break: break-all;
+}
+
+.ws-link {
+  color: var(--brand-600);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.ws-link:hover {
+  text-decoration: underline;
+}
+
+.ws-addr {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.ws-tag {
+  display: inline-block;
+  margin-left: .35rem;
+  padding: 0 .4rem;
+  border-radius: 999px;
+  font-size: .72rem;
+  background: var(--bg-soft-green);
+  color: var(--status-success);
+}
+
+.ws-error {
+  color: #e53e3e;
+  font-size: .78rem;
+  margin: 0 0 .6rem;
+}
+
+.ws-btn {
+  width: 100%;
+  padding: .55rem;
+  background: #4b68f2;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: .88rem;
+  cursor: pointer;
+  transition: background .2s;
+}
+.ws-btn:hover:not(:disabled) { background: #3f58d6; }
+.ws-btn:disabled { opacity: .6; cursor: not-allowed; }
 </style>
