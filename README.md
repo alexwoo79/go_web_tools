@@ -38,8 +38,9 @@ make demo      # 使用 .demo/config.yaml 启动独立演示库
 make wails-dev           # 桌面端开发（Vite 热重载，后端固定 127.0.0.1:8080）
 make wails-build         # 构建当前平台桌面应用 → build/bin/
 make wails-build-mac     # 构建 macOS 通用 .app
-make wails-package-win   # 构建 Windows NSIS 安装包（需 NSIS）
+make wails-package-win   # 构建 Windows NSIS 安装包（需要 NSIS，先 make wails-install-nsis）
 make wails-install-tools # 安装 Wails CLI（已安装则跳过）
+make wails-install-nsis  # 安装 NSIS（brew install makensis）
 ```
 
 说明：
@@ -72,6 +73,8 @@ make wails-install-tools # 安装 Wails CLI（已安装则跳过）
   首次运行自动写入内嵌默认配置）。数据库与 `data/` 相对配置所在目录生成。
 - 构建桌面端前会先跑 `scripts/sync_frontend.sh` 把 `vue-form/dist` 同步到
   `ui/frontend`，保证内嵌前端是最新构建。
+- Windows 安装包（`-nsis`）依赖 NSIS：macOS 上用 `make wails-install-nsis`
+  （即 `brew install makensis`）；只构建单文件 `.exe`（去掉 `-nsis`）则不需要。
 
 ## 配置概览
 

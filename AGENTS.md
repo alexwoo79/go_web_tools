@@ -21,7 +21,8 @@ make docker-up  # docker compose 部署
   `app.go`（绑定与系统菜单）、`redirector/index.html`（生产首屏跳转页）、`wails.json`、`build/`。
 - 常用命令：`make wails-dev`（Vite 热重载，后端固定 127.0.0.1:8080）、
   `make wails-build`（构建桌面应用，构建前经 `scripts/sync_frontend.sh` 把
-  `vue-form/dist` 同步到 `ui/frontend` 内嵌目录）。
+  `vue-form/dist` 同步到 `ui/frontend` 内嵌目录）、`make wails-package-win`
+  （Windows NSIS 安装包，依赖 `makensis`，先 `make wails-install-nsis`）。
 - 后端逻辑已抽到 `internal/app`：Web 服务（`cmd/server`）与桌面端共用
   `app.New` + `app.Server.Start/Shutdown`，不要分别维护两套初始化。
 - 生产模式后端监听 `127.0.0.1` 随机端口，窗口先加载 `redirector` 页，

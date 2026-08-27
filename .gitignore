@@ -10,6 +10,7 @@ build/bin/
 # Wails 桌面端生成物
 vue-form/wailsjs/
 vue-form/package.json.md5
+build/windows/installer/
 
 # IDE files
 .idea/

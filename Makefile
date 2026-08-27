@@ -4,7 +4,7 @@ CONFIG ?= ./config.yaml
 DEMO_PORT ?= 18099
 
 .PHONY: help deps api web dev demo air build package windows all test clean docker-build docker-up docker-down \
-	wails-dev wails-build wails-build-mac wails-package-win wails-install-tools
+	wails-dev wails-build wails-build-mac wails-package-win wails-install-tools wails-install-nsis
 
 help:
 	@echo "Common targets:"
@@ -27,8 +27,9 @@ help:
 	@echo "  make wails-dev          Wails 桌面端开发模式（Vite 热重载 + 后端 8080）"
 	@echo "  make wails-build        构建当前平台桌面应用（build/bin/）"
 	@echo "  make wails-build-mac    构建 macOS 通用 .app"
-	@echo "  make wails-package-win  构建 Windows NSIS 安装包"
+	@echo "  make wails-package-win  构建 Windows NSIS 安装包（需要 makensis）"
 	@echo "  make wails-install-tools 安装 Wails CLI"
+	@echo "  make wails-install-nsis  安装 NSIS（brew install makensis）"
 
 deps:
 	cd ./vue-form && npm ci
@@ -99,9 +100,19 @@ wails-build-mac: ## 构建 macOS 通用 .app
 	wails build -platform darwin/universal
 
 wails-package-win: ## 构建 Windows NSIS 安装包
+	@command -v makensis >/dev/null 2>&1 || (echo "错误：未找到 NSIS（makensis），无法生成 Windows 安装包。"; echo "请先安装：make wails-install-nsis  （或 brew install makensis）"; exit 1)
 	./scripts/sync_frontend.sh
 	wails build -platform windows/amd64 -nsis
 
 wails-install-tools: ## 安装 Wails CLI
 	@command -v wails >/dev/null 2>&1 || go install github.com/wailsapp/wails/v2/cmd/wails@latest
 	@wails version
+	@if command -v makensis >/dev/null 2>&1; then \
+		echo "NSIS 已安装: $$(makensis -VERSION 2>/dev/null | head -1)"; \
+	else \
+		echo "提示：NSIS 未安装。仅打 Windows 安装包（make wails-package-win）时需要，执行 make wails-install-nsis 安装。"; \
+	fi
+
+wails-install-nsis: ## 安装 NSIS（macOS/Linux 用 Homebrew）
+	@command -v makensis >/dev/null 2>&1 && echo "NSIS 已安装" || brew install makensis
+	@echo "NSIS 版本: $$(makensis -VERSION 2>/dev/null | head -1)"

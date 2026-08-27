@@ -32,6 +32,10 @@
 - **Web 服务启停仅限本机**：对外（局域网）监听通过 `lanHandler` 屏蔽
   `/api/desktop/*`（返回 403），局域网页面隐藏启停按钮，连线用户无法通过
   网页关闭本机 Web 服务；本机桌面窗口（127.0.0.1）不受影响。
+- **Windows NSIS 打包支持**：`make wails-package-win` 构建前检查 `makensis`，
+  缺失时给出明确安装指引；新增 `make wails-install-nsis`
+  （`brew install makensis`），`make wails-install-tools` 顺带报告 NSIS 状态。
+  已在本机安装 NSIS 并验证 `wails build -platform windows/amd64 -nsis` 流程。
 
 ### 2026-08-25 文档整理
 
